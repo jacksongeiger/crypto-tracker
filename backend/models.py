@@ -4,10 +4,13 @@ import uuid
 from sqlalchemy import (
     Boolean,
     Column,
+    Date,
     DateTime,
     Enum,
     ForeignKey,
     Index,
+    Integer,
+    SmallInteger,
     String,
     Text,
     func,
@@ -104,4 +107,65 @@ class RawSignal(Base):
             unique=True,
             postgresql_where=text("url IS NOT NULL"),
         ),
+    )
+
+
+class Brief(Base):
+    __tablename__ = "briefs"
+
+    id = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    generated_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    brief_date = Column(Date, nullable=False)
+    summary = Column(Text, nullable=False)
+    model_used = Column(String, nullable=False)
+    input_signal_count = Column(Integer, nullable=False)
+    generation_metadata = Column(JSONB, nullable=True)
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    themes = relationship(
+        "BriefTheme",
+        back_populates="brief",
+        cascade="all, delete-orphan",
+        order_by="BriefTheme.display_order",
+    )
+
+    __table_args__ = (
+        Index("ix_briefs_brief_date", text("brief_date DESC")),
+    )
+
+
+class BriefTheme(Base):
+    __tablename__ = "brief_themes"
+
+    id = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    brief_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("briefs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    title = Column(String, nullable=False)
+    body = Column(Text, nullable=False)
+    conviction_score = Column(SmallInteger, nullable=True)
+    source_signal_ids = Column(JSONB, nullable=False)
+    display_order = Column(SmallInteger, nullable=False)
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    brief = relationship("Brief", back_populates="themes")
+
+    __table_args__ = (
+        Index("ix_brief_themes_brief_order", "brief_id", "display_order"),
     )
