@@ -28,7 +28,9 @@ from typing import Any
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent.parent.parent
 BACKEND_DIR = REPO_ROOT / "backend"
-PROMPT_PATH = BACKEND_DIR / "prompts" / "synthesis_v4.md"
+PROMPT_PATH = BACKEND_DIR / "prompts" / "synthesis_v5.md"
+
+VALID_CATEGORIES = frozenset({"policy", "markets", "tech", "adoption", "misc"})
 sys.path.insert(0, str(BACKEND_DIR))
 
 from db import SessionLocal  # noqa: E402
@@ -122,6 +124,16 @@ def validate_response(payload: dict, valid_signal_ids: set[str]) -> None:
         score = t.get("conviction_score")
         if not isinstance(score, int) or not 1 <= score <= 5:
             raise ValueError(f"theme[{i}].conviction_score must be int 1-5, got {score!r}")
+        cats = t.get("categories")
+        if not isinstance(cats, list) or not 1 <= len(cats) <= 2:
+            raise ValueError(
+                f"theme[{i}].categories must be a list of 1-2 strings, got {cats!r}"
+            )
+        bad = [c for c in cats if c not in VALID_CATEGORIES]
+        if bad:
+            raise ValueError(
+                f"theme[{i}].categories contains unknown values: {bad}"
+            )
 
 
 def call_gemini(system_prompt: str, user_message: str) -> tuple[dict, dict]:
@@ -183,6 +195,7 @@ def persist(session, payload: dict, signals: list[dict], meta: dict) -> Brief:
                 conviction_score=t.get("conviction_score"),
                 primary_signal_id=t["primary_signal_id"],
                 source_signal_ids=t["source_signal_ids"],
+                categories=t["categories"],
                 display_order=i,
             )
         )

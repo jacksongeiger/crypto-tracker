@@ -7,6 +7,23 @@ export type Brief = {
   input_signal_count: number;
 };
 
+export const CATEGORIES = [
+  "policy",
+  "markets",
+  "tech",
+  "adoption",
+  "misc",
+] as const;
+export type Category = (typeof CATEGORIES)[number];
+
+export const CATEGORY_LABELS: Record<Category, string> = {
+  policy: "Policy",
+  markets: "Markets",
+  tech: "Tech",
+  adoption: "Adoption",
+  misc: "Misc",
+};
+
 export type BriefTheme = {
   id: string;
   display_order: number;
@@ -18,6 +35,8 @@ export type BriefTheme = {
   primary_signal_title: string;
   primary_signal_url: string | null;
   corroborating_count: number; // length(source_signal_ids) - 1
+  categories: Category[];
+  corroborating_sources: { id: string; name: string }[];
 };
 
 export type BriefWithThemes = {

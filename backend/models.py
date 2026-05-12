@@ -164,6 +164,7 @@ class BriefTheme(Base):
         nullable=False,
     )
     source_signal_ids = Column(JSONB, nullable=False)
+    categories = Column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
     display_order = Column(SmallInteger, nullable=False)
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
