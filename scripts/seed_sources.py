@@ -32,7 +32,7 @@ STARTER_SOURCES = [
     {
         "name": "Bankless",
         "source_type": SourceType.news_rss,
-        "url": "https://www.bankless.com/rss/feed.xml",
+        "url": "https://www.bankless.com/feed",
     },
 ]
 
