@@ -1,0 +1,101 @@
+import enum
+import uuid
+
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Index,
+    String,
+    Text,
+    func,
+    text,
+)
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.orm import DeclarativeBase, relationship
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class SourceType(str, enum.Enum):
+    news_rss = "news_rss"
+    on_chain = "on_chain"
+    prediction_market = "prediction_market"
+    macro = "macro"
+    crypto_price = "crypto_price"
+
+
+class Source(Base):
+    __tablename__ = "sources"
+
+    id = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    name = Column(String, nullable=False)
+    source_type = Column(
+        Enum(SourceType, name="source_type", native_enum=True),
+        nullable=False,
+    )
+    url = Column(String, nullable=True)
+    config = Column(JSONB, nullable=True)
+    is_active = Column(Boolean, nullable=False, server_default=text("true"))
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    raw_signals = relationship("RawSignal", back_populates="source")
+
+    __table_args__ = (
+        Index("ix_sources_source_type_is_active", "source_type", "is_active"),
+    )
+
+
+class RawSignal(Base):
+    __tablename__ = "raw_signals"
+
+    id = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    source_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("sources.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    signal_type = Column(String, nullable=False)
+    title = Column(String, nullable=False)
+    content = Column(Text, nullable=False)
+    url = Column(String, nullable=True)
+    raw_payload = Column(JSONB, nullable=False)
+    occurred_at = Column(DateTime(timezone=True), nullable=False)
+    ingested_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    extra = Column(JSONB, nullable=True)
+
+    source = relationship("Source", back_populates="raw_signals")
+
+    __table_args__ = (
+        Index(
+            "ix_raw_signals_source_occurred_at",
+            "source_id",
+            text("occurred_at DESC"),
+        ),
+        Index(
+            "ix_raw_signals_ingested_at",
+            text("ingested_at DESC"),
+        ),
+    )
