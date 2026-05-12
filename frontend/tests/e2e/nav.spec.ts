@@ -7,7 +7,7 @@ test("News dropdown opens and navigates", async ({ page }) => {
   // Click Policy
   await page.getByRole("menuitem", { name: /^policy$/i }).click();
   await expect(page).toHaveURL(/\/news\/policy$/);
-  await expect(page.getByText(/coming in phase 4/i)).toBeVisible();
+  await expect(page.getByText(/News · Policy/i).first()).toBeVisible();
 });
 
 test("Dashboard tab navigates", async ({ page }) => {
