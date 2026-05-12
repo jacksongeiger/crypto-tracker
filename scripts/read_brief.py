@@ -10,6 +10,7 @@ Exit codes:
 """
 from __future__ import annotations
 
+import os
 import sys
 import textwrap
 from pathlib import Path
@@ -23,9 +24,34 @@ from models import Brief, BriefTheme, RawSignal, Source  # noqa: E402
 
 WIDTH = 78
 
+# ANSI color codes for source-type labels. Disabled when stdout is not a TTY
+# or NO_COLOR is set, so piping into less/grep stays clean.
+_COLOR = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
+_RESET = "\033[0m" if _COLOR else ""
+SOURCE_TYPE_COLORS = {
+    "news_rss":          "\033[36m" if _COLOR else "",  # cyan
+    "on_chain":          "\033[32m" if _COLOR else "",  # green
+    "prediction_market": "\033[35m" if _COLOR else "",  # magenta
+    "macro":             "\033[33m" if _COLOR else "",  # yellow
+    "crypto_price":      "\033[34m" if _COLOR else "",  # blue
+}
+DIM = "\033[2m" if _COLOR else ""
+
 
 def _truncate(s: str, max_len: int) -> str:
     return s if len(s) <= max_len else s[: max_len - 1].rstrip() + "…"
+
+
+def _format_types(source_types) -> str | None:
+    """Return a colored 'types: a · b · c' string, or None to skip the line."""
+    if not source_types:
+        return None
+    parts = []
+    for st in source_types:
+        color = SOURCE_TYPE_COLORS.get(st, "")
+        parts.append(f"{color}{st}{_RESET}")
+    label = f"{DIM}types:{_RESET}" if _COLOR else "types:"
+    return f"    {label} " + (f" {DIM}·{_RESET} " if _COLOR else " · ").join(parts)
 
 
 def render(brief: Brief, rows) -> None:
@@ -64,6 +90,9 @@ def render(brief: Brief, rows) -> None:
             f"primary: {primary_source}  ·  "
             f"+{n_corroborators} corroborating source{plural}"
         )
+        types_line = _format_types(theme.source_types)
+        if types_line:
+            print(types_line)
         print()
         for line in textwrap.wrap(theme.body, width=WIDTH - 4):
             print(f"    {line}")
