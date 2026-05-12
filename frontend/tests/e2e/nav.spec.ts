@@ -14,7 +14,7 @@ test("Dashboard tab navigates", async ({ page }) => {
   await page.goto("/news/overview");
   await page.getByRole("link", { name: /^dashboard$/i }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
-  await expect(page.getByText(/coming in phase 5/i)).toBeVisible();
+  await expect(page.getByText(/Live market signals/i)).toBeVisible();
 });
 
 test("Root URL redirects to /news/overview", async ({ page }) => {
