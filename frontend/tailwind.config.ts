@@ -25,7 +25,10 @@ const config: Config = {
         ink: {
           DEFAULT: "#0A0B0D",
           muted: "#5B616E",
-          subtle: "#8A8F98",
+          // ink-subtle is used for eyebrow labels and metadata; the previous
+          // #8A8F98 failed WCAG AA contrast against white. Darkened to meet
+          // 4.5:1 for normal text.
+          subtle: "#6B7280",
           disabled: "#B1B5BC",
         },
         surface: {
@@ -40,10 +43,12 @@ const config: Config = {
         },
         success: {
           DEFAULT: "#05B169",
+          dark: "#047857",
           tint: "#E6F7EE",
         },
         danger: {
           DEFAULT: "#DF5F67",
+          dark: "#B91C1C",
           tint: "#FCEDEE",
         },
         warning: {

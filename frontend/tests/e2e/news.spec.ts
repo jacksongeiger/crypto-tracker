@@ -27,8 +27,12 @@ test("/news/markets and /news/policy show different themes", async ({ page }) =>
 });
 
 test("invalid category 404s", async ({ page }) => {
-  const resp = await page.goto("/news/not-a-real-category");
-  expect(resp?.status()).toBe(404);
+  // With streaming + loading.tsx the initial HTTP response is 200; the 404
+  // resolves later in the stream. Assert by rendered content.
+  await page.goto("/news/not-a-real-category", { waitUntil: "networkidle" });
+  await expect(page.getByText(/This page could not be found/i)).toBeVisible({
+    timeout: 10_000,
+  });
 });
 
 test("category page primary-article links have hrefs", async ({ page }) => {

@@ -160,7 +160,7 @@ export function TopNav() {
 
         {/* Right-side meta (desktop) */}
         <div className="hidden items-center gap-3 md:flex">
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-success-tint px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-success">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-success-tint px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-success-dark">
             <span aria-hidden className="block h-1.5 w-1.5 rounded-full bg-success" />
             live
           </span>

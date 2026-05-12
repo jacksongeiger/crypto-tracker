@@ -40,7 +40,7 @@ function StatTile({
       {typeof change === "number" && (
         <div
           className={`font-mono text-[11px] tabular-nums ${
-            change >= 0 ? "text-success" : "text-danger"
+            change >= 0 ? "text-success-dark" : "text-danger-dark"
           }`}
         >
           {fmtPct(change)} 24h
@@ -134,7 +134,7 @@ export async function OnChainStats() {
                   {c.change_1d !== null && (
                     <span
                       className={`font-mono w-16 text-right tabular-nums text-[11px] ${
-                        c.change_1d >= 0 ? "text-success" : "text-danger"
+                        c.change_1d >= 0 ? "text-success-dark" : "text-danger-dark"
                       }`}
                     >
                       {fmtPct(c.change_1d)}

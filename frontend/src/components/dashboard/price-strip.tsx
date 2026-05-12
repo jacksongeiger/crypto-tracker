@@ -20,7 +20,12 @@ export async function PriceStrip() {
           CoinGecko · 60s
         </div>
       </div>
-      <div className="scrollbar-none -mx-2 flex gap-3 overflow-x-auto px-2 pb-1">
+      <div
+        className="scrollbar-none -mx-2 flex gap-3 overflow-x-auto px-2 pb-1"
+        tabIndex={0}
+        role="region"
+        aria-label="Live prices, scrollable"
+      >
         {coins.map((c) => {
           const change = c.price_change_percentage_24h ?? 0;
           const positive = change >= 0;
@@ -35,7 +40,7 @@ export async function PriceStrip() {
                 </span>
                 <span
                   className={`font-mono text-[11px] tabular-nums ${
-                    positive ? "text-success" : "text-danger"
+                    positive ? "text-success-dark" : "text-danger-dark"
                   }`}
                 >
                   {fmtPct(change)}
