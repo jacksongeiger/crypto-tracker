@@ -158,6 +158,11 @@ class BriefTheme(Base):
     title = Column(String, nullable=False)
     body = Column(Text, nullable=False)
     conviction_score = Column(SmallInteger, nullable=True)
+    primary_signal_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("raw_signals.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
     source_signal_ids = Column(JSONB, nullable=False)
     display_order = Column(SmallInteger, nullable=False)
     created_at = Column(
