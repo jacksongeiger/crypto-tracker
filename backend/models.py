@@ -98,4 +98,10 @@ class RawSignal(Base):
             "ix_raw_signals_ingested_at",
             text("ingested_at DESC"),
         ),
+        Index(
+            "uq_raw_signals_url",
+            "url",
+            unique=True,
+            postgresql_where=text("url IS NOT NULL"),
+        ),
     )
