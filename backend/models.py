@@ -165,6 +165,10 @@ class BriefTheme(Base):
     )
     source_signal_ids = Column(JSONB, nullable=False)
     categories = Column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    # Which Source.source_type values contributed to this theme (multi-type
+    # corroboration tracking introduced with synthesis v6). NULL for themes
+    # produced before v6.
+    source_types = Column(JSONB, nullable=True)
     display_order = Column(SmallInteger, nullable=False)
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
