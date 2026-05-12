@@ -3,19 +3,20 @@
 Tests are pure: no DB, no HTTP. Just exercise the parse_* helpers
 against mocked API payloads.
 """
+import importlib.util
 import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-SKILL_SCRIPTS = REPO_ROOT / "skills" / "onchain" / "scripts"
-sys.path.insert(0, str(SKILL_SCRIPTS))
-
-from ingest import (  # noqa: E402
-    parse_chains,
-    parse_dexes,
-    parse_fees,
-    parse_stablecoins,
-)
+INGEST_PATH = REPO_ROOT / "skills" / "onchain" / "scripts" / "ingest.py"
+_spec = importlib.util.spec_from_file_location("onchain_ingest", INGEST_PATH)
+_mod = importlib.util.module_from_spec(_spec)
+sys.modules["onchain_ingest"] = _mod
+_spec.loader.exec_module(_mod)
+parse_chains = _mod.parse_chains
+parse_dexes = _mod.parse_dexes
+parse_fees = _mod.parse_fees
+parse_stablecoins = _mod.parse_stablecoins
 
 
 def test_parse_chains_filters_to_majors_and_emits_pct_string():

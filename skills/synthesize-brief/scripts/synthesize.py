@@ -1,13 +1,15 @@
-"""Generate a daily crypto brief from the last 24h of news_signals.
+"""Generate a daily crypto brief from the last 24h of multi-type signals.
 
 Pipeline:
-  1. Query raw_signals (signal_type='news_article') from the last 24h.
-  2. Refuse with a clear message if <5 signals (not enough to synthesize).
-  3. Load backend/prompts/synthesis_v1.md as system instruction.
+  1. Query raw_signals across ALL source types from the last 24h, joining
+     each to its Source for source_type + name metadata.
+  2. Refuse with a clear message if < MIN_SIGNALS (not enough corpus).
+  3. Load the v6 prompt as the system instruction.
   4. Call Gemini 2.5 Flash with structured-JSON output enforced.
-  5. Validate response: themes have non-empty source_signal_ids, all IDs
-     reference real input signals (hallucination guard), conviction 1-5.
-  6. Write briefs + brief_themes in a single transaction.
+  5. Validate response: per-theme primary in source_signal_ids, all IDs
+     real (hallucination guard), conviction 1-5, categories 1-2 valid,
+     source_types non-empty subset of valid SourceType values.
+  6. Write briefs + brief_themes (with source_types) in a single tx.
   7. Print brief_id, theme count, and the brief itself to stdout.
 
 Exit codes:
@@ -28,51 +30,66 @@ from typing import Any
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent.parent.parent
 BACKEND_DIR = REPO_ROOT / "backend"
-PROMPT_PATH = BACKEND_DIR / "prompts" / "synthesis_v5.md"
+PROMPT_PATH = BACKEND_DIR / "prompts" / "synthesis_v6.md"
 
 VALID_CATEGORIES = frozenset({"policy", "markets", "tech", "adoption", "misc"})
+VALID_SOURCE_TYPES = frozenset(
+    {"news_rss", "on_chain", "prediction_market", "macro", "crypto_price"}
+)
 sys.path.insert(0, str(BACKEND_DIR))
 
 from db import SessionLocal  # noqa: E402
 from models import Brief, BriefTheme, RawSignal, Source  # noqa: E402
 
-MIN_SIGNALS = 5
+MIN_SIGNALS = 20
 MODEL_NAME = os.environ.get("SYNTH_MODEL", "gemini-2.5-flash")
 TEMPERATURE = float(os.environ.get("SYNTH_TEMPERATURE", "0.4"))
-CONTENT_TRUNCATE_CHARS = 1200
+NEWS_TRUNCATE_CHARS = 800   # tighter than v5's 1200 because corpus is bigger
+OTHER_TRUNCATE_CHARS = 600  # non-news content is structured + already short
 
 
 def load_signals(session) -> list[dict]:
+    """Pull every raw_signal ingested in the last 24h with source metadata."""
     cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
     rows = (
-        session.query(RawSignal, Source.name)
+        session.query(RawSignal, Source.name, Source.source_type)
         .join(Source, Source.id == RawSignal.source_id)
-        .filter(
-            RawSignal.signal_type == "news_article",
-            RawSignal.ingested_at >= cutoff,
-        )
+        .filter(RawSignal.ingested_at >= cutoff)
         .order_by(RawSignal.occurred_at.desc())
         .all()
     )
-    return [
-        {
-            "signal_id": str(rs.id),
-            "source": source_name,
-            "occurred_at": rs.occurred_at.isoformat(),
-            "title": rs.title,
-            "content": (rs.content or "")[:CONTENT_TRUNCATE_CHARS],
-        }
-        for rs, source_name in rows
-    ]
+    out: list[dict] = []
+    for rs, source_name, source_type in rows:
+        truncate = (
+            NEWS_TRUNCATE_CHARS
+            if rs.signal_type == "news_article"
+            else OTHER_TRUNCATE_CHARS
+        )
+        out.append(
+            {
+                "signal_id": str(rs.id),
+                "source": source_name,
+                "source_type": source_type.value,
+                "signal_type": rs.signal_type,
+                "occurred_at": rs.occurred_at.isoformat(),
+                "title": rs.title,
+                "content": (rs.content or "")[:truncate],
+            }
+        )
+    return out
 
 
 def render_user_message(signals: list[dict], brief_date: str) -> str:
     blocks = []
+    by_type: dict[str, int] = {}
     for s in signals:
+        by_type[s["source_type"]] = by_type.get(s["source_type"], 0) + 1
         blocks.append(
             textwrap.dedent(
                 f"""\
                 - signal_id: {s['signal_id']}
+                  source_type: {s['source_type']}
+                  signal_type: {s['signal_type']}
                   source: {s['source']}
                   occurred_at: {s['occurred_at']}
                   title: {s['title']}
@@ -80,15 +97,18 @@ def render_user_message(signals: list[dict], brief_date: str) -> str:
                 """
             )
         )
+    type_breakdown = ", ".join(f"{k}={v}" for k, v in sorted(by_type.items()))
     return (
         f"Brief date: {brief_date}\n"
         f"Window: last 24 hours\n"
-        f"Signal count: {len(signals)}\n\n"
+        f"Signal count: {len(signals)} ({type_breakdown})\n\n"
         f"Signals:\n\n" + "\n".join(blocks)
     )
 
 
-def validate_response(payload: dict, valid_signal_ids: set[str]) -> None:
+def validate_response(
+    payload: dict, valid_signal_ids: set[str], signal_type_map: dict[str, str]
+) -> None:
     if not isinstance(payload, dict):
         raise ValueError("response is not a JSON object")
     if not isinstance(payload.get("summary"), str) or not payload["summary"].strip():
@@ -131,8 +151,33 @@ def validate_response(payload: dict, valid_signal_ids: set[str]) -> None:
             )
         bad = [c for c in cats if c not in VALID_CATEGORIES]
         if bad:
+            raise ValueError(f"theme[{i}].categories contains unknown values: {bad}")
+
+        # New in v6: source_types validation
+        stypes = t.get("source_types")
+        if not isinstance(stypes, list) or not stypes:
             raise ValueError(
-                f"theme[{i}].categories contains unknown values: {bad}"
+                f"theme[{i}].source_types must be a non-empty list of source_type strings"
+            )
+        bad_st = [s for s in stypes if s not in VALID_SOURCE_TYPES]
+        if bad_st:
+            raise ValueError(
+                f"theme[{i}].source_types contains unknown values: {bad_st}"
+            )
+        # source_types must match the actual unique source_types of cited signals
+        cited_types = {signal_type_map[sid] for sid in ids}
+        declared = set(stypes)
+        # Allow declared to be a subset of cited (model may legitimately
+        # narrow), but reject declared types not present in cited at all.
+        extra = declared - cited_types
+        if extra:
+            raise ValueError(
+                f"theme[{i}].source_types declares {sorted(extra)} but no cited signal has those types"
+            )
+        # Conviction 5 requires multiple distinct source_types
+        if score == 5 and len(declared) < 2:
+            raise ValueError(
+                f"theme[{i}] conviction 5 requires multiple source_types in source_types; got {sorted(declared)}"
             )
 
 
@@ -196,6 +241,7 @@ def persist(session, payload: dict, signals: list[dict], meta: dict) -> Brief:
                 primary_signal_id=t["primary_signal_id"],
                 source_signal_ids=t["source_signal_ids"],
                 categories=t["categories"],
+                source_types=t["source_types"],
                 display_order=i,
             )
         )
@@ -209,33 +255,40 @@ def main() -> int:
         signals = load_signals(session)
         if len(signals) < MIN_SIGNALS:
             print(
-                f"refusing to synthesize: only {len(signals)} news_article "
-                f"signals in last 24h (need >= {MIN_SIGNALS})",
+                f"refusing to synthesize: only {len(signals)} signals in last 24h "
+                f"(need >= {MIN_SIGNALS}). Run the source skills first.",
                 file=sys.stderr,
             )
             return 2
 
         valid_ids = {s["signal_id"] for s in signals}
+        signal_type_map = {s["signal_id"]: s["source_type"] for s in signals}
         brief_date = datetime.now(timezone.utc).date().isoformat()
         system_prompt = PROMPT_PATH.read_text()
         user_message = render_user_message(signals, brief_date)
 
         try:
             payload, meta = call_gemini(system_prompt, user_message)
-            validate_response(payload, valid_ids)
+            validate_response(payload, valid_ids, signal_type_map)
         except Exception as exc:  # noqa: BLE001
             print(f"synthesis failed: {exc}", file=sys.stderr)
             return 3
 
         brief = persist(session, payload, signals, meta)
         brief_id = str(brief.id)
-        brief_date = brief.brief_date.isoformat()
+        brief_date_str = brief.brief_date.isoformat()
     finally:
         session.close()
 
+    # Compute breakdown for display
+    by_type: dict[str, int] = {}
+    for s in signals:
+        by_type[s["source_type"]] = by_type.get(s["source_type"], 0) + 1
+    breakdown = ", ".join(f"{k}={v}" for k, v in sorted(by_type.items()))
+
     print(f"brief_id: {brief_id}")
-    print(f"brief_date: {brief_date}")
-    print(f"input_signals: {len(signals)}")
+    print(f"brief_date: {brief_date_str}")
+    print(f"input_signals: {len(signals)} ({breakdown})")
     print(f"themes: {len(payload['themes'])}")
     print(f"tokens: {meta.get('total_tokens')}")
     print()
@@ -245,8 +298,14 @@ def main() -> int:
     for i, t in enumerate(payload["themes"], 1):
         primary_short = t["primary_signal_id"][:8]
         n_corroborators = len(t["source_signal_ids"]) - 1
-        print(f"\n[{i}] {t['title']}  (conviction {t['conviction_score']}, "
-              f"primary={primary_short}…, +{n_corroborators} corroborators)")
+        types_str = ", ".join(t["source_types"])
+        print(
+            f"\n[{i}] {t['title']}  "
+            f"(conviction {t['conviction_score']}, "
+            f"primary={primary_short}…, "
+            f"+{n_corroborators} corroborators, "
+            f"types=[{types_str}])"
+        )
         print(textwrap.fill(t["body"], width=78, initial_indent="    ",
                             subsequent_indent="    "))
     print()

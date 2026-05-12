@@ -1,12 +1,17 @@
 """Unit tests for predictions skill parse helpers."""
+import importlib.util
 import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-SKILL_SCRIPTS = REPO_ROOT / "skills" / "predictions" / "scripts"
-sys.path.insert(0, str(SKILL_SCRIPTS))
-
-from ingest import looks_crypto, parse_yes_prob, to_signal  # noqa: E402
+INGEST_PATH = REPO_ROOT / "skills" / "predictions" / "scripts" / "ingest.py"
+_spec = importlib.util.spec_from_file_location("predictions_ingest", INGEST_PATH)
+_mod = importlib.util.module_from_spec(_spec)
+sys.modules["predictions_ingest"] = _mod
+_spec.loader.exec_module(_mod)
+looks_crypto = _mod.looks_crypto
+parse_yes_prob = _mod.parse_yes_prob
+to_signal = _mod.to_signal
 
 
 def test_looks_crypto_matches_keyword_substrings():

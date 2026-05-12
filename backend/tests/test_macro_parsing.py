@@ -1,13 +1,16 @@
 """Unit tests for macro skill build_signal()."""
+import importlib.util
 import sys
 from datetime import date, timezone
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-SKILL_SCRIPTS = REPO_ROOT / "skills" / "macro" / "scripts"
-sys.path.insert(0, str(SKILL_SCRIPTS))
-
-from ingest import build_signal  # noqa: E402
+INGEST_PATH = REPO_ROOT / "skills" / "macro" / "scripts" / "ingest.py"
+_spec = importlib.util.spec_from_file_location("macro_ingest", INGEST_PATH)
+_mod = importlib.util.module_from_spec(_spec)
+sys.modules["macro_ingest"] = _mod
+_spec.loader.exec_module(_mod)
+build_signal = _mod.build_signal
 
 
 def _ob(d: str, v):

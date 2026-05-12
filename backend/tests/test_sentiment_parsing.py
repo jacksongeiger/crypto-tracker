@@ -1,4 +1,5 @@
 """Unit tests for sentiment skill parsing."""
+import importlib.util
 import sys
 from datetime import timezone
 from pathlib import Path
@@ -6,10 +7,12 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-SKILL_SCRIPTS = REPO_ROOT / "skills" / "sentiment" / "scripts"
-sys.path.insert(0, str(SKILL_SCRIPTS))
-
-from ingest import parse  # noqa: E402
+INGEST_PATH = REPO_ROOT / "skills" / "sentiment" / "scripts" / "ingest.py"
+_spec = importlib.util.spec_from_file_location("sentiment_ingest", INGEST_PATH)
+_mod = importlib.util.module_from_spec(_spec)
+sys.modules["sentiment_ingest"] = _mod
+_spec.loader.exec_module(_mod)
+parse = _mod.parse
 
 
 def _payload(*rows):
