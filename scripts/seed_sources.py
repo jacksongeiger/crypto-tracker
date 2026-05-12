@@ -14,6 +14,7 @@ from db import SessionLocal  # noqa: E402
 from models import Source, SourceType  # noqa: E402
 
 STARTER_SOURCES = [
+    # News (RSS)
     {
         "name": "CoinDesk",
         "source_type": SourceType.news_rss,
@@ -33,6 +34,29 @@ STARTER_SOURCES = [
         "name": "Bankless",
         "source_type": SourceType.news_rss,
         "url": "https://www.bankless.com/feed",
+    },
+    # On-chain
+    {
+        "name": "Defillama",
+        "source_type": SourceType.on_chain,
+        "url": "https://defillama.com",
+    },
+    # Macro / sentiment
+    {
+        "name": "Fear & Greed Index",
+        "source_type": SourceType.macro,
+        "url": "https://alternative.me/crypto/fear-and-greed-index/",
+    },
+    {
+        "name": "FRED",
+        "source_type": SourceType.macro,
+        "url": "https://fred.stlouisfed.org/",
+    },
+    # Prediction markets
+    {
+        "name": "Polymarket",
+        "source_type": SourceType.prediction_market,
+        "url": "https://polymarket.com",
     },
 ]
 
