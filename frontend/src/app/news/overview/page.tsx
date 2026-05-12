@@ -12,7 +12,7 @@ export default async function OverviewPage() {
   if (!data) {
     return (
       <main>
-        <div className="mx-auto max-w-3xl px-6 py-24 sm:px-8">
+        <div className="mx-auto max-w-5xl px-6 py-24 sm:px-8">
           <p className="font-mono text-caption uppercase text-ink-subtle">
             Daily Brief
           </p>
@@ -42,7 +42,7 @@ export default async function OverviewPage() {
         themeCount={data.themes.length}
       />
 
-      <div className="mx-auto max-w-3xl px-6 pb-20 sm:px-8">
+      <div className="mx-auto max-w-5xl px-6 pb-20 sm:px-8">
         <div className="-mt-6 sm:-mt-8">
           <SummaryCard summary={data.brief.summary} />
         </div>

@@ -46,7 +46,7 @@ export function BriefHeader({
         aria-hidden
         className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-brand-500 via-brand-600 to-brand-500"
       />
-      <div className="mx-auto max-w-3xl px-6 py-12 sm:px-8 sm:py-16">
+      <div className="mx-auto max-w-5xl px-6 py-12 sm:px-8 sm:py-16">
         <div className="font-mono text-caption uppercase text-brand-700">
           {eyebrow}
         </div>

@@ -70,7 +70,7 @@ export function TopNav() {
 
   return (
     <header className="sticky top-0 z-50 border-b border-line-subtle bg-surface/90 backdrop-blur supports-[backdrop-filter]:bg-surface/70">
-      <div className="mx-auto flex h-14 max-w-6xl items-center gap-6 px-6 sm:px-8">
+      <div className="mx-auto flex h-14 max-w-7xl items-center gap-6 px-6 sm:px-8">
         {/* Wordmark */}
         <Link
           href="/news/overview"
@@ -185,7 +185,7 @@ export function TopNav() {
       {/* Mobile drawer */}
       {mobileOpen && (
         <div className="border-t border-line-subtle bg-surface md:hidden">
-          <div className="mx-auto max-w-6xl px-6 py-4">
+          <div className="mx-auto max-w-7xl px-6 py-4">
             <div className="font-mono text-caption uppercase text-ink-subtle">
               News
             </div>

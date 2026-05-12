@@ -1,6 +1,6 @@
 export default function Loading() {
   return (
-    <div className="mx-auto max-w-3xl px-6 py-24 sm:px-8" role="status" aria-live="polite">
+    <div className="mx-auto max-w-5xl px-6 py-24 sm:px-8" role="status" aria-live="polite">
       <span className="sr-only">Loading…</span>
       <div className="h-3 w-24 animate-pulse rounded bg-line-subtle" />
       <div className="mt-4 h-10 w-3/4 animate-pulse rounded bg-line-subtle" />

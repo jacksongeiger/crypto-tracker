@@ -44,7 +44,7 @@ export default function DashboardPage() {
           aria-hidden
           className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-brand-500 via-brand-600 to-brand-500"
         />
-        <div className="mx-auto max-w-6xl px-6 py-12 sm:px-8 sm:py-14">
+        <div className="mx-auto max-w-7xl px-6 py-12 sm:px-8 sm:py-14">
           <div className="font-mono text-caption uppercase text-brand-700">
             Dashboard
           </div>
@@ -59,7 +59,7 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-6xl px-6 pb-20 pt-8 sm:px-8 sm:pt-10">
+      <div className="mx-auto max-w-7xl px-6 pb-20 pt-8 sm:px-8 sm:pt-10">
         <Suspense fallback={<StripSkeleton />}>
           <PriceStrip />
         </Suspense>

@@ -1,6 +1,6 @@
 export default function DashboardLoading() {
   return (
-    <div className="mx-auto max-w-6xl px-6 py-16 sm:px-8" role="status" aria-live="polite">
+    <div className="mx-auto max-w-7xl px-6 py-16 sm:px-8" role="status" aria-live="polite">
       <span className="sr-only">Loading dashboard…</span>
       <div className="h-3 w-24 animate-pulse rounded bg-line-subtle" />
       <div className="mt-3 h-10 w-2/3 animate-pulse rounded bg-line-subtle" />

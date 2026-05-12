@@ -29,7 +29,7 @@ export default async function CategoryPage({
 
   if (!data) {
     return (
-      <main className="mx-auto max-w-3xl px-6 py-24 sm:px-8">
+      <main className="mx-auto max-w-5xl px-6 py-24 sm:px-8">
         <p className="font-mono text-caption uppercase text-ink-subtle">
           News · {CATEGORY_LABELS[category]}
         </p>
@@ -62,7 +62,7 @@ export default async function CategoryPage({
         themeCount={themeCount}
       />
 
-      <div className="mx-auto max-w-3xl px-6 pb-20 sm:px-8">
+      <div className="mx-auto max-w-5xl px-6 pb-20 sm:px-8">
         <div className="-mt-6 sm:-mt-8">
           <SummaryCard summary={lead} label={`${CATEGORY_LABELS[category]} TL;DR`} />
         </div>
