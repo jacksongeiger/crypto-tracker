@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import { TopNav } from "@/components/nav/top-nav";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -27,8 +28,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${inter.variable} ${jetbrainsMono.variable} antialiased bg-white text-zinc-950`}
+        className={`${inter.variable} ${jetbrainsMono.variable} antialiased bg-surface text-ink`}
       >
+        <TopNav />
         {children}
       </body>
     </html>
