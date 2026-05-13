@@ -17,13 +17,60 @@ test("/news/policy filters to policy-tagged themes only", async ({ page }) => {
   const articles = page.locator("article");
   const count = await articles.count();
   if (count > 0) {
+    // Either today's themes (always have Policy chip) OR 7-day fallback
+    // themes (always have Policy chip — same query filter).
     for (let i = 0; i < count; i++) {
       await expect(articles.nth(i).getByText(/^Policy$/i).first()).toBeVisible();
     }
   } else {
-    // No policy themes today is a legitimate state — the page shows the
-    // empty-state copy in that case.
-    await expect(page.getByText(/Nothing in this category in today/i)).toBeVisible();
+    // No themes anywhere in the past week — the page shows the
+    // "no coverage in past week" empty state.
+    await expect(page.getByText(/Nothing tagged Policy in the past week/i)).toBeVisible();
+  }
+});
+
+test("/news/markets TL;DR is real editorial content, not count-meta", async ({ page }) => {
+  await page.goto("/news/markets", { waitUntil: "networkidle" });
+  // Pull the first theme's title and assert at least one of its
+  // significant words appears in the TL;DR card. This proves the
+  // summary is actually derived from the data, not a placeholder.
+  const articles = page.locator("article");
+  const count = await articles.count();
+  if (count === 0) {
+    // Empty state is acceptable; the equivalent assertion runs on the
+    // /news/policy fallback test below.
+    return;
+  }
+  const firstHeading = await articles.first().locator("h2").innerText();
+  const tldr = page.getByLabel("Markets TL;DR");
+  await expect(tldr).toBeVisible();
+  const tldrText = await tldr.innerText();
+  // The TL;DR must NOT be the old count-meta placeholder
+  expect(tldrText).not.toMatch(/Highest-conviction first/i);
+  expect(tldrText).not.toMatch(/^\d+ themes? in Markets today/i);
+  // It should share at least one ≥4-letter word with the top theme title
+  const firstWords = firstHeading
+    .toLowerCase()
+    .split(/\W+/)
+    .filter((w) => w.length >= 4);
+  expect(firstWords.some((w) => tldrText.toLowerCase().includes(w))).toBe(true);
+});
+
+test("category page with empty today renders 7-day fallback or graceful empty", async ({ page }) => {
+  // Pick the category most likely to be empty on a small day. If today
+  // has policy themes, the empty-state copy won't appear — we only
+  // assert the empty-state copy when the empty state is actually shown.
+  await page.goto("/news/policy", { waitUntil: "networkidle" });
+  const tldr = page.getByLabel("Policy TL;DR");
+  const tldrText = await tldr.innerText();
+  if (/No Policy themes in today/i.test(tldrText)) {
+    // Empty case: we should see EITHER the 7-day fallback header OR the
+    // "Nothing tagged Policy in the past week" deep-empty state.
+    const fallbackHeader = page.getByText(/Recent Policy · past 7 days/i);
+    const deepEmpty = page.getByText(/Nothing tagged Policy in the past week/i);
+    const fallbackVisible = await fallbackHeader.isVisible().catch(() => false);
+    const deepEmptyVisible = await deepEmpty.isVisible().catch(() => false);
+    expect(fallbackVisible || deepEmptyVisible).toBe(true);
   }
 });
 

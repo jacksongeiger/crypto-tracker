@@ -205,3 +205,86 @@ export async function getLatestBriefByCategory(
     themes: data.themes.filter((t) => t.categories.includes(category)),
   };
 }
+
+export type RecentCategoryTheme = BriefTheme & {
+  brief_id: string;
+  brief_date: string;
+};
+
+// Pull recent themes tagged with the given category from briefs in the
+// last `days` days, excluding any brief whose id is in `excludeBriefIds`
+// (used to skip the latest brief on the category page so we don't repeat
+// what's already at the top). One theme per source story — we de-dupe by
+// primary_signal_id since the same upstream signal can show up across
+// same-day re-synthesis runs.
+export async function getRecentCategoryThemes(
+  category: Category,
+  { days = 7, limit = 6, excludeBriefIds = [] }: {
+    days?: number;
+    limit?: number;
+    excludeBriefIds?: string[];
+  } = {},
+): Promise<RecentCategoryTheme[]> {
+  const rows = await sql<
+    (ThemeRow & { brief_id: string; brief_date: Date })[]
+  >`
+    SELECT DISTINCT ON (bt.primary_signal_id)
+      bt.id,
+      bt.display_order,
+      bt.title,
+      bt.body,
+      bt.conviction_score,
+      bt.primary_signal_id,
+      bt.source_signal_ids,
+      bt.categories,
+      bt.brief_id,
+      b.brief_date,
+      s.name AS primary_source_name,
+      rs.title AS primary_signal_title,
+      rs.url   AS primary_signal_url,
+      COALESCE(
+        (
+          SELECT json_agg(
+                   json_build_object('id', rs2.id, 'name', s2.name)
+                   ORDER BY s2.name
+                 )
+          FROM jsonb_array_elements_text(bt.source_signal_ids) sid
+          JOIN raw_signals rs2 ON rs2.id::text = sid
+          JOIN sources s2 ON s2.id = rs2.source_id
+          WHERE rs2.id <> bt.primary_signal_id
+        ),
+        '[]'::json
+      ) AS corroborating_sources
+    FROM brief_themes bt
+    JOIN briefs b       ON b.id = bt.brief_id
+    JOIN raw_signals rs ON rs.id = bt.primary_signal_id
+    JOIN sources s      ON s.id = rs.source_id
+    WHERE b.brief_date >= current_date - ${days}::int
+      AND bt.categories @> ${JSON.stringify([category])}::jsonb
+      AND NOT (bt.brief_id = ANY(${excludeBriefIds}::uuid[]))
+    ORDER BY bt.primary_signal_id, b.generated_at DESC
+  `;
+
+  return rows
+    .map((t) => ({
+      id: t.id,
+      display_order: t.display_order,
+      title: t.title,
+      body: t.body,
+      conviction_score: t.conviction_score,
+      primary_signal_id: t.primary_signal_id,
+      primary_source_name: t.primary_source_name,
+      primary_signal_title: t.primary_signal_title,
+      primary_signal_url: t.primary_signal_url,
+      corroborating_count: Math.max(0, t.source_signal_ids.length - 1),
+      categories: (t.categories ?? []) as Category[],
+      corroborating_sources: t.corroborating_sources ?? [],
+      brief_id: t.brief_id,
+      brief_date: t.brief_date.toISOString().slice(0, 10),
+    }))
+    .sort((a, b) => {
+      if (a.brief_date !== b.brief_date) return a.brief_date < b.brief_date ? 1 : -1;
+      return (b.conviction_score ?? 0) - (a.conviction_score ?? 0);
+    })
+    .slice(0, limit);
+}
