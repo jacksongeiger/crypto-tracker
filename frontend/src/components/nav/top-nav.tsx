@@ -7,6 +7,7 @@ import { ChevronDown, Menu, X } from "lucide-react";
 
 const NEWS_ITEMS = [
   { slug: "overview", label: "Overview" },
+  { slug: "weekly", label: "Weekly" },
   { slug: "policy", label: "Policy" },
   { slug: "markets", label: "Markets" },
   { slug: "tech", label: "Tech" },
