@@ -33,7 +33,7 @@ BACKEND_DIR = REPO_ROOT / "backend"
 DEFAULT_PROMPT = BACKEND_DIR / "prompts" / "synthesis_v7.md"
 PROMPT_PATH = Path(os.environ.get("SYNTH_PROMPT", str(DEFAULT_PROMPT)))
 
-VALID_CATEGORIES = frozenset({"policy", "markets", "tech", "adoption", "misc"})
+VALID_CATEGORIES = frozenset({"policy", "markets", "tech", "adoption", "misc", "ai"})
 VALID_SOURCE_TYPES = frozenset(
     {"news_rss", "on_chain", "prediction_market", "macro", "crypto_price"}
 )
@@ -50,12 +50,20 @@ OTHER_TRUNCATE_CHARS = 600  # non-news content is structured + already short
 
 
 def load_signals(session) -> list[dict]:
-    """Pull every raw_signal ingested in the last 24h with source metadata."""
+    """Pull every raw_signal *occurring* in the last 24h with source metadata.
+
+    Filtering on `occurred_at` (publication date / snapshot timestamp)
+    rather than `ingested_at` means a backfill of historical RSS posts
+    (e.g. when a new feed source is added that exposes its full archive)
+    doesn't contaminate today's brief with months-old content. Snapshot
+    signals (on-chain, macro, predictions, sentiment) all use
+    occurred_at=now() so they're unaffected.
+    """
     cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
     rows = (
         session.query(RawSignal, Source.name, Source.source_type)
         .join(Source, Source.id == RawSignal.source_id)
-        .filter(RawSignal.ingested_at >= cutoff)
+        .filter(RawSignal.occurred_at >= cutoff)
         .order_by(RawSignal.occurred_at.desc())
         .all()
     )

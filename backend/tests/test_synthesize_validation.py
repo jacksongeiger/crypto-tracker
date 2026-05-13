@@ -82,12 +82,23 @@ def test_categories_unknown_value_rejected():
 
 
 def test_each_valid_category_individually_accepted():
+    expected = {"policy", "markets", "tech", "adoption", "misc", "ai"}
+    assert set(VALID_CATEGORIES) == expected
     for cat in VALID_CATEGORIES:
         validate_response(
             _payload([_theme(categories=[cat])]),
             VALID_IDS,
             TYPE_MAP,
         )
+
+
+def test_ai_category_accepted_alone_and_combined():
+    validate_response(
+        _payload([_theme(categories=["ai"])]), VALID_IDS, TYPE_MAP
+    )
+    validate_response(
+        _payload([_theme(categories=["ai", "adoption"])]), VALID_IDS, TYPE_MAP
+    )
 
 
 def test_primary_must_be_in_source_signal_ids():

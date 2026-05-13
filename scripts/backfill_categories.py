@@ -26,7 +26,7 @@ from db import SessionLocal  # noqa: E402
 from models import BriefTheme  # noqa: E402
 
 MODEL_NAME = "gemini-2.5-flash"
-VALID_CATEGORIES = ["policy", "markets", "tech", "adoption", "misc"]
+VALID_CATEGORIES = ["policy", "markets", "tech", "ai", "adoption", "misc"]
 
 CLASSIFY_PROMPT = """You are categorizing a single news theme for a crypto-news app.
 
@@ -35,8 +35,9 @@ Categories (pick 1, or at most 2 if the theme genuinely spans two):
 - policy: regulation, enforcement, legislation, central banks, courts, sanctions
 - markets: capital flows, fundraises, M&A, ETF, treasury behavior, exchange moves
 - tech: protocols, infrastructure, standards, L1/L2, security primitives, tooling
+- ai: AI ecosystem itself — model releases, agent frameworks (MCP/OpenClaw), developer tools, AI infrastructure, capability announcements. NOT crypto+AI intersections (those are adoption).
 - adoption: real-world use, payments, AI-agent + crypto, partnerships putting crypto in front of users
-- misc: high-signal stories that don't fit the four above
+- misc: high-signal stories that don't fit the five above
 
 Return JSON of the form: {"categories": ["..."]}. No prose, no markdown.
 """

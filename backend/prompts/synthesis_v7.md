@@ -222,7 +222,25 @@ two — most should have one.
   integrates USDC for AI agents; MoonPay AI copilot; a fintech launches
   a stablecoin payment rail; a brand-name retailer accepting BTC.
 
-- **misc** — high-signal stories that don't fit cleanly into the four
+- **ai** — developments in the **AI ecosystem itself**: model releases
+  (GPT-5.x, Claude 5.x, Gemini 3.x), agent frameworks (MCP, OpenClaw,
+  LangGraph, etc), developer tools, AI infrastructure (chips, clusters,
+  capacity deals), capability announcements, AI research, AI platform
+  decisions (pricing, safety policy). Example: "OpenAI ships GPT-5.4
+  with native code-execution"; "Anthropic announces Claude 5.5 with
+  100M context"; "Hugging Face releases inference endpoints v2";
+  "Nvidia announces Blackwell B300 GPU".
+
+  **This is NOT for crypto×AI intersection stories.** A story about
+  Circle launching USDC tools for AI agents = **adoption** (or
+  adoption+tech), not ai. A story about an AI token (FET, AGIX)
+  doubling = **markets**, not ai. A story about MoonPay's AI copilot
+  for prediction markets = **adoption**. The ai tag is reserved for
+  the AI ecosystem proper, separate from crypto. When a story sits in
+  both worlds (e.g. "OpenAI partners with Coinbase for native payments
+  in ChatGPT"), use both tags: `["ai", "adoption"]`.
+
+- **misc** — high-signal stories that don't fit cleanly into the five
   above. Use this honestly rather than forcing fit. A scoop about a
   founder departure, an unusual on-chain event, a deep-dive piece that
   doesn't tie to a single category — these are misc.
