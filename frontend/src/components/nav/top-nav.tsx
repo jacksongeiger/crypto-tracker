@@ -13,6 +13,7 @@ const NEWS_ITEMS = [
   { slug: "ai", label: "AI" },
   { slug: "adoption", label: "Adoption" },
   { slug: "misc", label: "Misc" },
+  { slug: "history", label: "History" },
 ] as const;
 
 type NavSection = "news" | "dashboard";

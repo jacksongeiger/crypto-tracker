@@ -11,10 +11,20 @@ test("/news/overview renders themes from all categories", async ({ page }) => {
 test("/news/policy filters to policy-tagged themes only", async ({ page }) => {
   await page.goto("/news/policy", { waitUntil: "networkidle" });
   await expect(page.getByText(/News · Policy/i).first()).toBeVisible();
-  // The CLARITY Act theme is tagged policy in our seeded data
-  await expect(page.getByText(/CLARITY Act/i).first()).toBeVisible({
-    timeout: 10_000,
-  });
+  // Every theme article on this page should carry a "Policy" category chip.
+  // (Specific theme titles vary day-to-day with the corpus; assert the
+  // category-tag invariant instead.)
+  const articles = page.locator("article");
+  const count = await articles.count();
+  if (count > 0) {
+    for (let i = 0; i < count; i++) {
+      await expect(articles.nth(i).getByText(/^Policy$/i).first()).toBeVisible();
+    }
+  } else {
+    // No policy themes today is a legitimate state — the page shows the
+    // empty-state copy in that case.
+    await expect(page.getByText(/Nothing in this category in today/i)).toBeVisible();
+  }
 });
 
 test("/news/markets and /news/policy show different themes", async ({ page }) => {
