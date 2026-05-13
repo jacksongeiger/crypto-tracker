@@ -58,6 +58,36 @@ STARTER_SOURCES = [
         "source_type": SourceType.prediction_market,
         "url": "https://polymarket.com",
     },
+    # AI ecosystem (news_rss) — covers model releases, agent frameworks,
+    # developer tools, capability announcements. NOT crypto+AI intersection
+    # (Circle AI agents etc) — those still classify as adoption/tech via
+    # synthesis. Anthropic does not publish an official RSS feed as of
+    # 2026-05-13; substituting Google AI Blog as the second AI-lab source.
+    {
+        "name": "OpenAI",
+        "source_type": SourceType.news_rss,
+        "url": "https://openai.com/blog/rss.xml",
+    },
+    {
+        "name": "Google AI",
+        "source_type": SourceType.news_rss,
+        "url": "https://blog.google/technology/ai/rss/",
+    },
+    {
+        "name": "TechCrunch AI",
+        "source_type": SourceType.news_rss,
+        "url": "https://techcrunch.com/category/artificial-intelligence/feed/",
+    },
+    {
+        "name": "The Verge AI",
+        "source_type": SourceType.news_rss,
+        "url": "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml",
+    },
+    {
+        "name": "VentureBeat AI",
+        "source_type": SourceType.news_rss,
+        "url": "https://venturebeat.com/category/ai/feed/",
+    },
 ]
 
 
