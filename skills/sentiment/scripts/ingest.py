@@ -124,7 +124,11 @@ def main() -> int:
                 signal_type=signal["signal_type"],
                 title=signal["title"],
                 content=signal["content"],
-                url="https://alternative.me/crypto/fear-and-greed-index/",
+                # url intentionally None — the alternative.me page is a
+                # generic dashboard, not a per-event link, and the partial
+                # uq_raw_signals_url index rejects repeats of the same URL
+                # across days. The signal is identified by occurred_at.
+                url=None,
                 raw_payload=signal["raw_payload"],
                 occurred_at=signal["occurred_at"],
             )
