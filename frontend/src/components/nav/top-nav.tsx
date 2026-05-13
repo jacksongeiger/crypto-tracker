@@ -10,6 +10,7 @@ const NEWS_ITEMS = [
   { slug: "policy", label: "Policy" },
   { slug: "markets", label: "Markets" },
   { slug: "tech", label: "Tech" },
+  { slug: "ai", label: "AI" },
   { slug: "adoption", label: "Adoption" },
   { slug: "misc", label: "Misc" },
 ] as const;

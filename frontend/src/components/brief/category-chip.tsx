@@ -6,6 +6,9 @@ const TONE: Record<Category, string> = {
   policy: "bg-brand-50 text-brand-700 ring-1 ring-inset ring-brand-100",
   markets: "bg-brand-50 text-brand-700 ring-1 ring-inset ring-brand-200",
   tech: "bg-surface-muted text-ink ring-1 ring-inset ring-line",
+  // AI uses a teal-shifted tint to stay in the cool-color family but
+  // distinguish from the Coinbase-blue Tech/Markets/Policy chips.
+  ai: "bg-sky-50 text-sky-700 ring-1 ring-inset ring-sky-200",
   adoption: "bg-brand-100 text-brand-700 ring-1 ring-inset ring-brand-200",
   misc: "bg-surface-muted text-ink-muted ring-1 ring-inset ring-line-subtle",
 };

@@ -11,6 +11,7 @@ export const CATEGORIES = [
   "policy",
   "markets",
   "tech",
+  "ai",
   "adoption",
   "misc",
 ] as const;
@@ -20,6 +21,7 @@ export const CATEGORY_LABELS: Record<Category, string> = {
   policy: "Policy",
   markets: "Markets",
   tech: "Tech",
+  ai: "AI",
   adoption: "Adoption",
   misc: "Misc",
 };
