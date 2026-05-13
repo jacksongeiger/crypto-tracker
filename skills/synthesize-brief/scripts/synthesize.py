@@ -107,6 +107,147 @@ def render_user_message(signals: list[dict], brief_date: str) -> str:
     )
 
 
+SYSTEMIC_DROP_THRESHOLD = 0.5
+
+
+def sanitize_response(
+    payload: dict, valid_signal_ids: set[str], signal_type_map: dict[str, str]
+) -> dict:
+    """Clean a Gemini response in-place: drop hallucinated signal IDs, drop
+    irrecoverable themes, recompute source_types and auto-downgrade conviction
+    if cleaning broke the multi-type-for-5 rule. Returns a drop report.
+
+    Raises ValueError only on **systemic** failures:
+      - response not a dict / themes empty / summary empty
+      - >SYSTEMIC_DROP_THRESHOLD of themes had to be dropped entirely
+      - cleaning left zero themes
+      - cleaned themes still violate a non-recoverable rule
+    """
+    report: dict = {"dropped_signals": [], "dropped_themes": [], "auto_corrected": []}
+
+    if not isinstance(payload, dict):
+        raise ValueError("response is not a JSON object")
+    if not isinstance(payload.get("summary"), str) or not payload["summary"].strip():
+        raise ValueError("summary missing or empty")
+    themes = payload.get("themes")
+    if not isinstance(themes, list) or not themes:
+        raise ValueError("themes missing or empty")
+    original_count = len(themes)
+    if original_count > 5:
+        # Truncate excess rather than fail
+        report["auto_corrected"].append(
+            {"kind": "truncate_themes", "from": original_count, "to": 5}
+        )
+        themes = themes[:5]
+
+    cleaned: list[dict] = []
+    for i, t in enumerate(themes):
+        title_for_log = (t.get("title") or "<no title>")[:80] if isinstance(t, dict) else "<not a dict>"
+
+        if not isinstance(t, dict):
+            report["dropped_themes"].append({"index": i, "title": title_for_log, "reason": "not an object"})
+            continue
+        for key in ("title", "body"):
+            if not isinstance(t.get(key), str) or not t[key].strip():
+                report["dropped_themes"].append({"index": i, "title": title_for_log, "reason": f"{key} missing or empty"})
+                break
+        else:
+            # ── clean source_signal_ids ──
+            ids = t.get("source_signal_ids")
+            if not isinstance(ids, list):
+                report["dropped_themes"].append({"index": i, "title": title_for_log, "reason": "source_signal_ids not a list"})
+                continue
+            unknown = [x for x in ids if x not in valid_signal_ids]
+            known = [x for x in ids if x in valid_signal_ids]
+            if unknown:
+                report["dropped_signals"].append(
+                    {"theme_index": i, "title": title_for_log, "dropped": unknown}
+                )
+            if not known:
+                report["dropped_themes"].append({"index": i, "title": title_for_log, "reason": "no valid source_signal_ids remain"})
+                continue
+            t["source_signal_ids"] = known
+
+            # ── primary_signal_id must survive cleaning ──
+            primary = t.get("primary_signal_id")
+            if not isinstance(primary, str) or primary not in valid_signal_ids:
+                # Try to recover by promoting the first remaining known signal as primary
+                report["auto_corrected"].append(
+                    {"kind": "primary_promoted", "theme_index": i,
+                     "old": primary, "new": known[0]}
+                )
+                primary = known[0]
+                t["primary_signal_id"] = primary
+            if primary not in known:
+                # Primary survived valid_ids but isn't in cleaned source list — fold it in
+                known.append(primary)
+                t["source_signal_ids"] = known
+
+            # ── conviction_score ──
+            score = t.get("conviction_score")
+            if not isinstance(score, int) or not 1 <= score <= 5:
+                report["dropped_themes"].append({"index": i, "title": title_for_log, "reason": f"invalid conviction_score: {score!r}"})
+                continue
+
+            # ── categories: drop invalid entries (e.g. model put a source_type
+            #    in the categories field) but keep theme if >=1 valid remains ──
+            cats = t.get("categories")
+            if not isinstance(cats, list) or not cats:
+                report["dropped_themes"].append({"index": i, "title": title_for_log, "reason": f"categories missing or not a list: {cats!r}"})
+                continue
+            valid_cats = [c for c in cats if c in VALID_CATEGORIES][:2]  # cap at 2
+            if not valid_cats:
+                report["dropped_themes"].append({"index": i, "title": title_for_log, "reason": f"no valid categories in {cats!r}"})
+                continue
+            if valid_cats != cats:
+                report["auto_corrected"].append(
+                    {"kind": "categories_cleaned", "theme_index": i,
+                     "from": cats, "to": valid_cats}
+                )
+                t["categories"] = valid_cats
+
+            # ── source_types: rebuild from the cleaned id set so it is honest ──
+            cited_types = sorted({signal_type_map[sid] for sid in known if sid in signal_type_map})
+            declared = t.get("source_types")
+            if not isinstance(declared, list) or not declared:
+                t["source_types"] = cited_types
+                report["auto_corrected"].append(
+                    {"kind": "source_types_rebuilt", "theme_index": i, "new": cited_types}
+                )
+            else:
+                # Drop any declared types not actually cited; keep order stable
+                kept = [s for s in declared if s in cited_types and s in VALID_SOURCE_TYPES]
+                if set(kept) != set(declared):
+                    report["auto_corrected"].append(
+                        {"kind": "source_types_pruned", "theme_index": i,
+                         "from": declared, "to": kept or cited_types}
+                    )
+                t["source_types"] = kept or cited_types
+
+            # ── conviction 5 requires multi-type; auto-downgrade if cleaning broke it ──
+            if t["conviction_score"] == 5 and len(set(t["source_types"])) < 2:
+                report["auto_corrected"].append(
+                    {"kind": "conviction_downgraded_5_to_4",
+                     "theme_index": i, "title": title_for_log,
+                     "reason": "post-cleaning only one source_type remains"}
+                )
+                t["conviction_score"] = 4
+
+            cleaned.append(t)
+
+    if not cleaned:
+        raise ValueError("sanitization left zero themes — response unusable")
+    drop_ratio = len(report["dropped_themes"]) / original_count
+    if drop_ratio > SYSTEMIC_DROP_THRESHOLD:
+        raise ValueError(
+            f"systemic failure: dropped {len(report['dropped_themes'])}/{original_count} themes "
+            f"(>{int(SYSTEMIC_DROP_THRESHOLD*100)}% threshold)"
+        )
+
+    payload["themes"] = cleaned
+    return report
+
+
 def validate_response(
     payload: dict, valid_signal_ids: set[str], signal_type_map: dict[str, str]
 ) -> None:
@@ -269,12 +410,77 @@ def main() -> int:
         system_prompt = PROMPT_PATH.read_text()
         user_message = render_user_message(signals, brief_date)
 
-        try:
-            payload, meta = call_gemini(system_prompt, user_message)
-            validate_response(payload, valid_ids, signal_type_map)
-        except Exception as exc:  # noqa: BLE001
-            print(f"synthesis failed: {exc}", file=sys.stderr)
-            return 3
+        # Attempt synthesis, sanitize hallucinated IDs, retry once on systemic failure.
+        sanitize_report: dict = {}
+        last_raw_payload: dict | None = None
+        for attempt in (1, 2):
+            try:
+                payload, meta = call_gemini(system_prompt, user_message)
+                last_raw_payload = json.loads(json.dumps(payload))  # deep copy for logging
+                sanitize_report = sanitize_response(payload, valid_ids, signal_type_map)
+                break
+            except Exception as exc:  # noqa: BLE001
+                if attempt == 1:
+                    print(
+                        f"synthesis attempt 1 failed: {exc}; retrying once",
+                        file=sys.stderr,
+                    )
+                    continue
+                print(f"synthesis failed after retry: {exc}", file=sys.stderr)
+                if last_raw_payload is not None:
+                    print(
+                        "--- raw Gemini payload from final attempt ---",
+                        file=sys.stderr,
+                    )
+                    print(
+                        json.dumps(last_raw_payload, indent=2)[:4000],
+                        file=sys.stderr,
+                    )
+                return 3
+
+        # Log sanitization actions so we can track frequency over time.
+        if sanitize_report.get("dropped_signals"):
+            print(
+                f"sanitization: dropped hallucinated IDs from "
+                f"{len(sanitize_report['dropped_signals'])} theme(s)",
+                file=sys.stderr,
+            )
+            for d in sanitize_report["dropped_signals"]:
+                print(
+                    f"  theme {d['theme_index']} ({d['title']!r}): dropped "
+                    f"{len(d['dropped'])} bad id(s): {d['dropped']}",
+                    file=sys.stderr,
+                )
+        if sanitize_report.get("dropped_themes"):
+            print(
+                f"sanitization: dropped {len(sanitize_report['dropped_themes'])} "
+                f"theme(s) entirely",
+                file=sys.stderr,
+            )
+            for d in sanitize_report["dropped_themes"]:
+                print(
+                    f"  theme {d['index']} ({d['title']!r}): {d['reason']}",
+                    file=sys.stderr,
+                )
+        if sanitize_report.get("auto_corrected"):
+            print(
+                f"sanitization: applied {len(sanitize_report['auto_corrected'])} "
+                f"auto-correction(s)",
+                file=sys.stderr,
+            )
+            for c in sanitize_report["auto_corrected"]:
+                print(f"  {c}", file=sys.stderr)
+        # Persist the sanitization summary on the brief so it's recoverable.
+        if isinstance(meta, dict):
+            meta["sanitization"] = {
+                "dropped_signal_count": sum(
+                    len(d["dropped"]) for d in sanitize_report.get("dropped_signals", [])
+                ),
+                "dropped_themes": len(sanitize_report.get("dropped_themes", [])),
+                "auto_corrected_count": len(
+                    sanitize_report.get("auto_corrected", [])
+                ),
+            }
 
         if dry_run:
             brief_id = "DRY-RUN (not persisted)"
