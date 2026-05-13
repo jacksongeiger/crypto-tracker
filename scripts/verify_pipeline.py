@@ -1,26 +1,30 @@
 """Verify crypto-tracker pipeline health.
 
-Outputs a status report covering:
-  - Registered OpenClaw cron jobs (presence of the 6 expected ones)
-  - Last run timestamp + status for each
-  - DB signal counts today, broken down by source_type
+Reads:
+  - The system crontab block managed by install_system_cron.sh
+  - tail of each job's log under {repo}/logs/<job>.log for last run + status
+  - DB signal counts in last 24h, broken down by source_type
   - Today's brief presence
 
-Default output: human-readable text. Pass --json for machine output.
+Default output: human-readable. Pass --json for machine output.
 
 Usage:
   backend/.venv/bin/python scripts/verify_pipeline.py
   backend/.venv/bin/python scripts/verify_pipeline.py --json
+
+Exit code: 0 = healthy, 1 = degraded (missing job or stale run).
 """
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+LOG_DIR = REPO_ROOT / "logs"
 BACKEND_DIR = REPO_ROOT / "backend"
 sys.path.insert(0, str(BACKEND_DIR))
 
@@ -29,65 +33,81 @@ from sqlalchemy import func, select  # noqa: E402
 from db import SessionLocal  # noqa: E402
 from models import Brief, RawSignal, Source  # noqa: E402
 
-EXPECTED_JOBS = {
-    "crypto-tracker-news",
-    "crypto-tracker-onchain",
-    "crypto-tracker-sentiment",
-    "crypto-tracker-macro",
-    "crypto-tracker-predictions",
-    "crypto-tracker-synthesis",
-}
+EXPECTED_JOBS = ["news", "onchain", "sentiment", "macro", "predictions", "synthesis"]
+
+# Status line format produced by run_cron_job.sh:
+#   STATUS 2026-05-13T13:30:00Z OK news rc=0 dur=12s
+STATUS_RE = re.compile(
+    r"^STATUS\s+(?P<ts>\S+)\s+(?P<status>OK|FAIL)\s+(?P<job>\S+)\s+rc=(?P<rc>\d+)\s+dur=(?P<dur>\d+)s"
+)
 
 
-def _run(cmd: list[str]) -> tuple[int, str, str]:
+def parse_crontab() -> dict[str, str]:
+    """Return {job_name: cron_expression} for crypto-tracker entries."""
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
-        return r.returncode, r.stdout, r.stderr
-    except subprocess.TimeoutExpired:
-        return 124, "", "timeout"
-    except FileNotFoundError:
-        return 127, "", "openclaw CLI not on PATH"
+        out = subprocess.run(
+            ["crontab", "-l"], capture_output=True, text=True, timeout=10
+        ).stdout
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return {}
+    jobs: dict[str, str] = {}
+    in_block = False
+    for line in out.splitlines():
+        if "crypto-tracker cron" in line and ">>>" in line:
+            in_block = True
+            continue
+        if "crypto-tracker cron" in line and "<<<" in line:
+            in_block = False
+            continue
+        if not in_block:
+            continue
+        if line.strip().startswith("#") or line.strip().startswith("CRON_TZ"):
+            continue
+        # Expression form: M H DOM MON DOW <runner> <name> <script>
+        parts = line.strip().split()
+        if len(parts) < 7:
+            continue
+        cron_expr = " ".join(parts[:5])
+        try:
+            runner_idx = next(
+                i for i, p in enumerate(parts) if p.endswith("run_cron_job.sh")
+            )
+            name = parts[runner_idx + 1]
+        except (StopIteration, IndexError):
+            continue
+        jobs[name] = cron_expr
+    return jobs
 
 
-def gather_cron_jobs() -> dict:
-    """List cron jobs as JSON via `openclaw cron list --json`."""
-    code, out, err = _run(["openclaw", "cron", "list", "--json"])
-    if code != 0:
-        return {"available": False, "error": err.strip() or f"exit {code}", "jobs": []}
-    try:
-        data = json.loads(out)
-    except json.JSONDecodeError:
-        return {"available": False, "error": "non-JSON output", "jobs": []}
-    jobs = data.get("jobs") if isinstance(data, dict) else data
-    if not isinstance(jobs, list):
-        jobs = []
-    return {"available": True, "error": None, "jobs": jobs}
-
-
-def gather_recent_runs(job_id: str) -> dict | None:
-    """Last run summary for a job via `openclaw cron runs --id <id> --limit 1 --json`."""
-    code, out, _ = _run([
-        "openclaw", "cron", "runs", "--id", job_id, "--limit", "1", "--json",
-    ])
-    if code != 0:
+def parse_log_tail(job_name: str) -> dict | None:
+    log_path = LOG_DIR / f"{job_name}.log"
+    if not log_path.exists():
         return None
     try:
-        data = json.loads(out)
-    except json.JSONDecodeError:
+        with log_path.open("rb") as f:
+            f.seek(0, 2)
+            size = f.tell()
+            f.seek(max(0, size - 4096))
+            tail = f.read().decode("utf-8", errors="replace")
+    except OSError:
         return None
-    runs = data.get("runs") if isinstance(data, dict) else data
-    if isinstance(runs, list) and runs:
-        return runs[0]
+    for line in reversed(tail.splitlines()):
+        m = STATUS_RE.match(line.strip())
+        if m:
+            return {
+                "ts": m.group("ts"),
+                "status": m.group("status"),
+                "rc": int(m.group("rc")),
+                "dur_s": int(m.group("dur")),
+            }
     return None
 
 
 def gather_db_state() -> dict:
-    """Today's signal counts by source_type and brief presence."""
     session = SessionLocal()
     try:
         today = datetime.now(timezone.utc).date()
         cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
-
         rows = session.execute(
             select(Source.source_type, func.count(RawSignal.id))
             .join(RawSignal, RawSignal.source_id == Source.id)
@@ -95,7 +115,6 @@ def gather_db_state() -> dict:
             .group_by(Source.source_type)
         ).all()
         counts = {st.value: int(c) for st, c in rows}
-
         brief = (
             session.query(Brief)
             .filter(Brief.brief_date == today)
@@ -117,125 +136,76 @@ def gather_db_state() -> dict:
 
 
 def build_report() -> dict:
-    cron = gather_cron_jobs()
+    cron_jobs = parse_crontab()
     job_status: list[dict] = []
-    if cron["available"]:
-        by_name = {j.get("name"): j for j in cron["jobs"] if isinstance(j, dict)}
-        for expected_name in sorted(EXPECTED_JOBS):
-            j = by_name.get(expected_name)
-            if not j:
-                job_status.append({
-                    "name": expected_name,
-                    "present": False,
-                    "id": None,
-                    "schedule": None,
-                    "last_run": None,
-                })
-                continue
-            last = gather_recent_runs(j.get("id", ""))
-            job_status.append({
-                "name": expected_name,
-                "present": True,
-                "id": j.get("id"),
-                "schedule": j.get("schedule") or j.get("cron"),
-                "tz": j.get("tz"),
-                "enabled": j.get("enabled", True),
-                "last_run": last,
-            })
-
-    db = gather_db_state()
-    now = datetime.now()
-
+    for name in EXPECTED_JOBS:
+        sched = cron_jobs.get(name)
+        last = parse_log_tail(name)
+        job_status.append({
+            "name": name,
+            "present": sched is not None,
+            "schedule": sched,
+            "last_run": last,
+        })
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "host_local_now": now.isoformat(),
-        "cron_available": cron["available"],
-        "cron_error": cron["error"],
+        "host_local_now": datetime.now().isoformat(),
         "jobs": job_status,
-        "db": db,
+        "db": gather_db_state(),
     }
 
 
 def render_text(rep: dict) -> str:
-    lines: list[str] = []
-    lines.append("crypto-tracker pipeline status")
-    lines.append("=" * 60)
-    lines.append(f"now (local): {rep['host_local_now']}")
-    lines.append(f"checked at:  {rep['generated_at']}")
-    lines.append("")
-
-    # Cron jobs
-    lines.append("Cron jobs:")
-    if not rep["cron_available"]:
-        lines.append(f"  ✗ openclaw cron unavailable: {rep['cron_error']}")
-    else:
-        for j in rep["jobs"]:
-            mark = "✓" if j["present"] else "✗"
-            sched_obj = j.get("schedule") or {}
-            if isinstance(sched_obj, dict):
-                expr = sched_obj.get("expr") or "(no expr)"
-                tz = sched_obj.get("tz") or ""
-                sched_str = f"{expr} {tz}".strip()
-            else:
-                sched_str = str(sched_obj)
-            extra = ""
-            if j["present"]:
-                last = j.get("last_run") or {}
-                if last:
-                    ts = last.get("finishedAt") or last.get("startedAt") or "?"
-                    if isinstance(ts, (int, float)):
-                        ts = datetime.fromtimestamp(ts / 1000, tz=timezone.utc).isoformat(timespec="minutes")
-                    status = last.get("status", "?")
-                    extra = f"  last: {ts} ({status})"
-                else:
-                    extra = "  last: never"
-            lines.append(f"  {mark} {j['name']:<28} {sched_str:<28} {extra}")
-
-    lines.append("")
-
-    # DB state
+    L: list[str] = []
+    L.append("crypto-tracker pipeline status")
+    L.append("=" * 60)
+    L.append(f"now (local): {rep['host_local_now']}")
+    L.append(f"checked at:  {rep['generated_at']}")
+    L.append("")
+    L.append("Cron jobs (system crontab):")
+    for j in rep["jobs"]:
+        mark = "✓" if j["present"] else "✗"
+        sched = j.get("schedule") or "(missing)"
+        last = j.get("last_run")
+        if last:
+            last_str = f"  last: {last['ts']} {last['status']} ({last['dur_s']}s)"
+        else:
+            last_str = "  last: never"
+        L.append(f"  {mark} {j['name']:<12} {sched:<14}{last_str}")
+    L.append("")
     db = rep["db"]
-    lines.append("Signals in last 24h (by source_type):")
+    L.append("Signals in last 24h:")
     if not db["signals_last_24h_by_type"]:
-        lines.append("  (none — ingestion pipeline appears idle)")
+        L.append("  (none — pipeline idle)")
     else:
         for st, n in sorted(db["signals_last_24h_by_type"].items()):
-            lines.append(f"  {st:<22} {n:>5}")
-        lines.append(f"  {'total':<22} {db['signals_total_last_24h']:>5}")
-
-    lines.append("")
-    lines.append("Today's brief:")
+            L.append(f"  {st:<22} {n:>5}")
+        L.append(f"  {'total':<22} {db['signals_total_last_24h']:>5}")
+    L.append("")
+    L.append("Today's brief:")
     if db["today_brief_present"]:
-        lines.append(
+        L.append(
             f"  ✓ brief {db['today_brief_id'][:8]}…  "
             f"generated {db['today_brief_generated_at']}  "
             f"({db['today_brief_theme_count']} themes)"
         )
     else:
-        hour_local = datetime.now().hour
-        if hour_local < 7:
-            lines.append("  • not yet — synthesis scheduled for 06:50 PT")
+        local_hour = datetime.now().hour
+        if local_hour < 7:
+            L.append("  • not yet — synthesis scheduled for 06:50 PT")
         else:
-            lines.append("  ✗ NO brief for today (synthesis may have failed)")
-
-    return "\n".join(lines)
+            L.append("  ✗ NO brief for today (synthesis may have failed)")
+    return "\n".join(L)
 
 
 def main() -> int:
-    want_json = "--json" in sys.argv
     rep = build_report()
-    if want_json:
+    if "--json" in sys.argv:
         print(json.dumps(rep, indent=2, default=str))
     else:
         print(render_text(rep))
-    # Exit code reflects health: 0 = all jobs present + today's brief OK (or
-    # too early), 1 = degraded.
-    if not rep["cron_available"]:
-        return 1
     missing = [j for j in rep["jobs"] if not j["present"]]
-    if missing:
-        return 1
-    return 0
+    return 1 if missing else 0
 
 
 if __name__ == "__main__":

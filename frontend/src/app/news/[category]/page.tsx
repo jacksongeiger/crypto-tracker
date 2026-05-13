@@ -73,7 +73,7 @@ export default async function CategoryPage({
               No themes
             </p>
             <p className="mt-3 text-bodyLg text-ink-muted">
-              Nothing in this category in today's brief.
+              Nothing in this category in today&apos;s brief.
             </p>
             <a
               href="/news/overview"
