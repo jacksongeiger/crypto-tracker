@@ -171,19 +171,25 @@ def render_text(rep: dict) -> str:
     else:
         for j in rep["jobs"]:
             mark = "✓" if j["present"] else "✗"
-            sched = j.get("schedule") or "(no schedule)"
-            tz = j.get("tz") or ""
-            tz_str = f" {tz}" if tz else ""
+            sched_obj = j.get("schedule") or {}
+            if isinstance(sched_obj, dict):
+                expr = sched_obj.get("expr") or "(no expr)"
+                tz = sched_obj.get("tz") or ""
+                sched_str = f"{expr} {tz}".strip()
+            else:
+                sched_str = str(sched_obj)
             extra = ""
             if j["present"]:
                 last = j.get("last_run") or {}
                 if last:
                     ts = last.get("finishedAt") or last.get("startedAt") or "?"
+                    if isinstance(ts, (int, float)):
+                        ts = datetime.fromtimestamp(ts / 1000, tz=timezone.utc).isoformat(timespec="minutes")
                     status = last.get("status", "?")
-                    extra = f"   last: {ts} ({status})"
+                    extra = f"  last: {ts} ({status})"
                 else:
-                    extra = "   last: never"
-            lines.append(f"  {mark} {j['name']:<32} {sched}{tz_str}{extra}")
+                    extra = "  last: never"
+            lines.append(f"  {mark} {j['name']:<28} {sched_str:<28} {extra}")
 
     lines.append("")
 
