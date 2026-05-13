@@ -30,7 +30,8 @@ from typing import Any
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent.parent.parent
 BACKEND_DIR = REPO_ROOT / "backend"
-PROMPT_PATH = BACKEND_DIR / "prompts" / "synthesis_v6.md"
+DEFAULT_PROMPT = BACKEND_DIR / "prompts" / "synthesis_v7.md"
+PROMPT_PATH = Path(os.environ.get("SYNTH_PROMPT", str(DEFAULT_PROMPT)))
 
 VALID_CATEGORIES = frozenset({"policy", "markets", "tech", "adoption", "misc"})
 VALID_SOURCE_TYPES = frozenset(
@@ -250,6 +251,7 @@ def persist(session, payload: dict, signals: list[dict], meta: dict) -> Brief:
 
 
 def main() -> int:
+    dry_run = "--dry-run" in sys.argv
     session = SessionLocal()
     try:
         signals = load_signals(session)
@@ -274,9 +276,13 @@ def main() -> int:
             print(f"synthesis failed: {exc}", file=sys.stderr)
             return 3
 
-        brief = persist(session, payload, signals, meta)
-        brief_id = str(brief.id)
-        brief_date_str = brief.brief_date.isoformat()
+        if dry_run:
+            brief_id = "DRY-RUN (not persisted)"
+            brief_date_str = datetime.now(timezone.utc).date().isoformat()
+        else:
+            brief = persist(session, payload, signals, meta)
+            brief_id = str(brief.id)
+            brief_date_str = brief.brief_date.isoformat()
     finally:
         session.close()
 

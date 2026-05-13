@@ -90,18 +90,87 @@ Brief id: `<latest>` — `read_brief.py` shows the rendered version.
 top-line that wasn't there before. Single-type bucketing on
 peripheral themes persists — same v4-era issue, separate fix.
 
-## What the next prompt iteration (v7) should target
+## v7 — same-event constraint (winner of A/B/C/D experiment)
 
-- Same-source-type bucketing inside `on_chain` (Theme 5 today). The
-  primary_signal_id rule applies, but Defillama snapshots are all
-  similarly weighted, so picking "primary" doesn't surface an
-  editorial center. Candidate fix: in the prompt, treat on-chain
-  bucket themes as illegal unless the body cites a *narrative*
-  connecting the metrics (not just "all up").
-- Within-company news bucketing (Circle, Theme 3). v4 didn't fix it,
-  v5 didn't fix it, v6 didn't fix it. Candidate fix: a stricter
-  same-event check in the validator that compares titles for entity
-  overlap *and* event overlap, or a model self-check pass.
-- More macro signal types beyond FRED: oil, real yields, crypto-
-  specific positioning data (CME OI), would lift more themes from
-  2-type to 3-type.
+Designed four experiments to crack the within-type/within-entity
+bucketing v4 didn't fix:
+
+1. **Exp 1 — same-event constraint.** Adds explicit prompt rule that
+   `source_signal_ids` must contain ONLY signals about the SAME event
+   as the primary, with a worked example (Circle Arc presale only,
+   not Arc + Q1 earnings + AI agent launch).
+2. **Exp 2 — split-or-die.** Adds a 5-word self-check ("name your
+   theme's single event in 5 words") and worked example of splitting
+   1 draft into 2 themes.
+3. **Exp 3 — title hard constraints.** Banned words list in titles
+   (`and`, `+`, `while`, `&`, `amid`, `alongside`).
+4. **Exp 4 — two-pass.** Pass 1 enumerates 20–40 distinct events;
+   Pass 2 selects 3–5 from the event list.
+
+### Comparison table (run against the same 269-signal corpus)
+
+| Exp | Single-event % | AND titles | Within-entity split | Within-type split | Themes | Cross-type ★5 | Cost vs v6 |
+|-----|----------------|------------|---------------------|-------------------|--------|----------------|------------|
+| v6 baseline | 1/5 (20%)   | 2 (T2, T5) | ✗ Circle merged    | ✗ DEX bucket      | 5 | 1 (CPI/macro/preds) | 1.0× |
+| **Exp 1**   | **5/5 (100%)** | **0**      | ✓ Circle = Arc only | ✓ no on-chain bucket | 5 | **2 (Fed, MSTR)**     | 1.0× |
+| Exp 2       | 3/5 (60%)   | 1 (T4: "DEX Volumes and Chain Fees") | ✓ Circle split | ✗ DEX/fees bucket | 5 | 0           | 1.1× |
+| Exp 3       | 1/5 (20% by body) | 0 (titles clean) | ✗ body still buckets Arc+AI+Ark | ✗ Bhutan+Exodus+MSTR in body | 5 | 1 (suspect)        | 1.05× |
+| Exp 4       | (could not run; daily Flash quota exhausted on retries) | | | | | | ~2× |
+
+### Decision: ship Exp 1
+
+Per the spec rule — "If any prose-only experiment achieves >80%
+single-event themes AND 0 AND-titles AND retains cross-type
+conviction-5 themes, use that one" — **Exp 1 satisfies all three**:
+
+- 5/5 single-event themes (Fed, MSTR, Franklin/Payward, Circle Arc, DTCC each isolated)
+- 0 banned conjunctions in titles
+- 2 cross-type ★5 themes (Fed/Warsh + MSTR), one MORE than v6
+
+Did not run Exp 4. The structural fallback wasn't needed because a
+prose experiment cleared the bar. Two-pass would have cost ~2× tokens
++ extra quota slots for the same outcome — keeping it as a v8
+candidate if Exp 1's win turns out to be sampling-luck rather than
+real.
+
+### Why Exp 1 worked when Exp 3 didn't
+
+Exp 3 banned conjunctions in titles, and the model complied — but
+hid the bucketed events in the body instead. Theme 5 in Exp 3:
+"Circle raises $222M for Arc institutional blockchain" (clean title)
++ body that bundles Arc presale, AI agents, AND Ark Invest's Circle
+share buy. The title constraint is a surface fix; the body remains
+the bucket.
+
+Exp 1 attacks the right level: every signal in `source_signal_ids`
+must be about the SAME event as the primary. With that rule, the
+Arc presale theme drops the AI agent and Ark Invest signals from
+sources, and the model cannot smuggle them into the body without
+violating the same-event filter.
+
+### Tests
+
+`backend/tests/test_v7_anti_bucketing.py` — 8 passing pytest cases
+plus 1 deliberate skip:
+
+- `TestNoAndInTitles`: regex check for `+`, `&`, `while`, `amid`,
+  `alongside` and capitalized "X and Y" subjects
+- `TestSingleEventInBody`: heuristic — body shouldn't introduce
+  more than 1 known entity not named in the title
+- `TestV7AgainstKnownBadBrief`: feeds the v6 on-chain bucket and
+  TradFi bucket through the validators and asserts they fail
+- `test_primary_event_dominance` skipped per spec (semantic LLM
+  judge not in scope)
+
+### Remaining failure modes (honest)
+
+- Exp 1 dropped on-chain themes entirely from this run. May be the
+  honest call (no single on-chain event was uniquely consequential
+  today) or may indicate v7 over-rejects. Watch on future runs.
+- The "same-event filter" is enforced by prompt only — the
+  validator catches title-level and entity-overlap issues but not
+  semantic same-event drift. A v8 would either add an LLM judge
+  pass or rerun with the two-pass architecture.
+- Cross-type 5 went from 1 to 2 in this run but that's variance-
+  prone; want N≥3 brief runs over different days to confirm the
+  improvement is structural not lucky.
