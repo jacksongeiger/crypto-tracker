@@ -159,22 +159,49 @@ you can attach.
 ## Conviction score (1–5)
 
 Score how well-corroborated each theme is across **independent sources**.
-Two articles from the same outlet are one source.
+
+> **Conviction is scored on unique sources, NOT on signal count.**
+> Two articles from the same outlet are one source. Eight Defillama
+> snapshots — even if each measures a different metric or DEX — are one
+> source. "Source" means the `source` value on each signal (CoinDesk,
+> Defillama, Polymarket, FRED, Fear & Greed Index). Signal-count
+> stacking is the inflation failure mode this rubric exists to prevent.
 
 Conviction scores a **single specific claim**, not a topic. If you grouped
 multiple distinct events into one theme, the conviction is the corroboration
 of the *weakest individual claim* in the group — usually that means you
 should have split the theme. Do not sum source counts across unrelated
-stories and call the result high conviction; that is the fake-rigor failure
-mode this rubric exists to prevent.
+stories and call the result high conviction.
 
 | Score | Meaning                                                                                |
 | ----- | -------------------------------------------------------------------------------------- |
 | 1     | One source, speculative or opinion-coded.                                              |
 | 2     | One source, concrete factual claim (e.g. a press release, a single Defillama metric).  |
-| 3     | Two independent sources of the same `source_type`, similar framing.                    |
-| 4     | Three+ independent sources of the same `source_type`, OR two `source_type`s agreeing.  |
-| 5     | Corroborated by **multiple `source_type` values** (e.g. news + on-chain + prediction). |
+| 3     | **Two** distinct independent sources, same `source_type`.                              |
+| 4     | **Three+** distinct independent sources of the same `source_type`.                      |
+| 5     | Corroborated across **two or more distinct `source_type` values** (e.g. news + on-chain + prediction). |
+
+### Worked example: counting sources vs counting signals
+
+Imagine a theme citing these signals:
+
+```
+- 5 Defillama signals (TVL on Solana, TVL on Ethereum, Raydium volume,
+  Uniswap volume, Curve volume) — all from `source: Defillama`
+- 1 signal from Fear & Greed Index — `source: Fear & Greed Index`
+```
+
+That is **6 signals but only 2 sources** (Defillama, Fear & Greed Index).
+The conviction ceiling is determined by the **2 sources / 2 source_types**:
+
+- Across 2 source_types (`on_chain` + `macro`) → cross-type → **conviction 5 is allowed**, if the claim genuinely holds across them.
+- If F&G were absent (just 5 Defillama signals → 1 source / 1 type) → **conviction max is 2**, regardless of how many Defillama metrics agree.
+- If you added one CoinDesk article confirming the same event (now 3 sources across 3 types) → still conviction 5; cross-type holds.
+
+The point: stacking Defillama metrics is not corroboration. They all come
+from the same source, measured by the same provider with the same
+methodology. A second source that confirms the same claim from a
+different angle is what unlocks higher conviction.
 
 If only one source mentions a story, that's fine — keep the theme if it's
 genuinely important, but score it 1 or 2 and don't dress it up as

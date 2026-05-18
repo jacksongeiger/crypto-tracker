@@ -61,14 +61,14 @@ def load_signals(session) -> list[dict]:
     """
     cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
     rows = (
-        session.query(RawSignal, Source.name, Source.source_type)
+        session.query(RawSignal, Source.id, Source.name, Source.source_type)
         .join(Source, Source.id == RawSignal.source_id)
         .filter(RawSignal.occurred_at >= cutoff)
         .order_by(RawSignal.occurred_at.desc())
         .all()
     )
     out: list[dict] = []
-    for rs, source_name, source_type in rows:
+    for rs, source_id, source_name, source_type in rows:
         truncate = (
             NEWS_TRUNCATE_CHARS
             if rs.signal_type == "news_article"
@@ -77,6 +77,7 @@ def load_signals(session) -> list[dict]:
         out.append(
             {
                 "signal_id": str(rs.id),
+                "source_id": str(source_id),
                 "source": source_name,
                 "source_type": source_type.value,
                 "signal_type": rs.signal_type,
@@ -118,12 +119,48 @@ def render_user_message(signals: list[dict], brief_date: str) -> str:
 SYSTEMIC_DROP_THRESHOLD = 0.5
 
 
+def max_conviction_for_counts(source_count: int, type_count: int) -> int:
+    """Highest conviction score the rubric allows given counts of distinct
+    independent sources and distinct source_types.
+
+    The rubric (mirrors the v7 prompt — see "Conviction score" section):
+      5 → ≥2 distinct source_types (cross-type corroboration)
+      4 → ≥3 distinct independent sources of the same type
+      3 → ≥2 distinct independent sources
+      2 → 1 source, concrete factual claim (model judges concrete vs speculative)
+      1 → 1 source, speculative
+
+    Source identity is `Source.id`, not signal count. Two articles from the
+    same outlet count as one source; eight Defillama snapshots count as one
+    source. The model is asked to score on unique sources; this ceiling is
+    the post-hoc validator that catches inflation when the model conflated
+    signal count with source count.
+    """
+    if type_count >= 2:
+        return 5
+    if source_count >= 3:
+        return 4
+    if source_count >= 2:
+        return 3
+    return 2  # 1 source — model still picks 1 vs 2 by speculative/concrete content
+
+
 def sanitize_response(
-    payload: dict, valid_signal_ids: set[str], signal_type_map: dict[str, str]
+    payload: dict,
+    valid_signal_ids: set[str],
+    signal_type_map: dict[str, str],
+    signal_source_map: dict[str, str] | None = None,
 ) -> dict:
     """Clean a Gemini response in-place: drop hallucinated signal IDs, drop
     irrecoverable themes, recompute source_types and auto-downgrade conviction
-    if cleaning broke the multi-type-for-5 rule. Returns a drop report.
+    if cleaning broke the multi-type-for-5 rule or if the declared conviction
+    exceeds the source/type-count ceiling. Returns a drop report.
+
+    `signal_source_map` maps signal_id → a stable source identifier
+    (Source.id as str). When provided, conviction is bounded by the count
+    of distinct independent sources (not signals). When omitted, only the
+    source_type-based ceiling is applied (back-compat for tests that
+    don't supply a source map).
 
     Raises ValueError only on **systemic** failures:
       - response not a dict / themes empty / summary empty
@@ -232,14 +269,40 @@ def sanitize_response(
                     )
                 t["source_types"] = kept or cited_types
 
-            # ── conviction 5 requires multi-type; auto-downgrade if cleaning broke it ──
-            if t["conviction_score"] == 5 and len(set(t["source_types"])) < 2:
+            # ── conviction ceiling by distinct sources × source_types ──
+            # Two articles from the same outlet count as one source; many
+            # signals from a single source (e.g. per-DEX Defillama snapshots)
+            # cannot stack into a high conviction score on their own.
+            type_count = len(set(t["source_types"]))
+            if signal_source_map is not None:
+                cited_sources = {
+                    signal_source_map[sid] for sid in known if sid in signal_source_map
+                }
+                source_count = len(cited_sources)
+            else:
+                # Back-compat path for tests/callers without a source map:
+                # treat each cited signal as its own source. The type-based
+                # ceiling still applies and is the only constraint that fires.
+                source_count = len(known)
+            max_allowed = max_conviction_for_counts(source_count, type_count)
+            if t["conviction_score"] > max_allowed:
                 report["auto_corrected"].append(
-                    {"kind": "conviction_downgraded_5_to_4",
-                     "theme_index": i, "title": title_for_log,
-                     "reason": "post-cleaning only one source_type remains"}
+                    {
+                        "kind": "conviction_downgraded_by_source_count",
+                        "theme_index": i,
+                        "title": title_for_log,
+                        "from": t["conviction_score"],
+                        "to": max_allowed,
+                        "source_count": source_count,
+                        "type_count": type_count,
+                        "reason": (
+                            f"declared {t['conviction_score']} but cited "
+                            f"{source_count} distinct source(s) across "
+                            f"{type_count} type(s); rubric ceiling is {max_allowed}"
+                        ),
+                    }
                 )
-                t["conviction_score"] = 4
+                t["conviction_score"] = max_allowed
 
             cleaned.append(t)
 
@@ -414,6 +477,7 @@ def main() -> int:
 
         valid_ids = {s["signal_id"] for s in signals}
         signal_type_map = {s["signal_id"]: s["source_type"] for s in signals}
+        signal_source_map = {s["signal_id"]: s["source_id"] for s in signals}
         brief_date = datetime.now(timezone.utc).date().isoformat()
         system_prompt = PROMPT_PATH.read_text()
         user_message = render_user_message(signals, brief_date)
@@ -425,7 +489,9 @@ def main() -> int:
             try:
                 payload, meta = call_gemini(system_prompt, user_message)
                 last_raw_payload = json.loads(json.dumps(payload))  # deep copy for logging
-                sanitize_report = sanitize_response(payload, valid_ids, signal_type_map)
+                sanitize_report = sanitize_response(
+                    payload, valid_ids, signal_type_map, signal_source_map
+                )
                 break
             except Exception as exc:  # noqa: BLE001
                 if attempt == 1:
