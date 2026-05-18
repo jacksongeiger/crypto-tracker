@@ -174,3 +174,92 @@ plus 1 deliberate skip:
 - Cross-type 5 went from 1 to 2 in this run but that's variance-
   prone; want N≥3 brief runs over different days to confirm the
   improvement is structural not lucky.
+
+## v7.1 — conviction is unique sources, not signal count
+
+Prompt + validator change (no new model run). The v7 sanitizer
+auto-downgraded conviction 5→4 when source_types dropped below 2
+after cleaning, but there was no ceiling on conviction by **distinct
+independent source count**. The "Two articles from the same outlet
+are one source" rule was prompt-only, not enforced anywhere.
+
+Effect: a theme with N signals from a single source (e.g. 8 Defillama
+snapshots — TVL on Solana + TVL on Ethereum + Raydium volume + Uniswap
+volume + Curve volume + Aave fees + Lido stakes + Aerodrome…) could
+honestly be one Defillama datapoint stacked across DEXes, but the
+model would call it conviction 4 because "8 signals corroborate."
+That's the inflation pattern v7.1 closes.
+
+### Changes
+
+- `skills/synthesize-brief/scripts/synthesize.py`: `load_signals` now
+  carries `Source.id` per signal so the sanitizer can compute
+  `effective_source_count`. `sanitize_response` takes a new
+  `signal_source_map` arg and applies `max_conviction_for_counts`:
+
+  | distinct sources | distinct types | conviction ceiling |
+  | ---------------: | -------------: | ------------------ |
+  | 1                | 1              | 2                  |
+  | 2                | 1              | 3                  |
+  | 3+               | 1              | 4                  |
+  | any              | 2+             | 5                  |
+
+  Downgrades log a `conviction_downgraded_by_source_count` entry in
+  `auto_corrected` and persist via `generation_metadata.sanitization`.
+
+- `backend/prompts/synthesis_v7.md`: explicit unique-sources-not-signals
+  block at the top of the conviction section, with a worked example
+  (5 Defillama + 1 F&G = 2 sources, conviction 5 only because
+  cross-type; pure 5 Defillama = max conviction 2). The score table
+  rows for 3 and 4 now say "distinct" sources rather than just
+  "independent."
+
+- Frontend: `source-popover.tsx` dedupes corroborating signals by
+  source name and renders one row per unique name with a "(N signals)"
+  suffix when N>1. The "+N" chip counts unique source names that
+  differ from the primary's source, so a primary-Defillama theme with
+  7 other Defillama signals + 1 F&G renders "+1 source" instead of "+8".
+
+### Retroactive re-score (2026-05-17)
+
+Ran `scripts/rescore_conviction.py --apply` against the 6 production
+briefs. 11/53 themes downgraded:
+
+| count | shift | shape                              |
+| ----: | ----- | ---------------------------------- |
+|     6 | 4→2   | 1 source, 1 type — pure on-chain or pure prediction-market buckets |
+|     4 | 4→3   | 2 sources, 1 type — same-type-only coverage |
+|     1 | 5→4   | 4 sources, 1 type — Circle Arc bucket (news-only) |
+
+The 5→4 case ("Circle Secures $222M for Arc Institutional Blockchain
+and Launches AI") was already flagged in the TODO as same-entity
+bucketing v7 didn't fully solve; the score-drop is downstream of that
+same root cause and is correct. The 4→2 cases are the classic Defillama
+or Polymarket signal-stacking pattern this v7.1 change exists to
+prevent.
+
+No themes were dropped or invalidated — only conviction scores moved.
+
+### Why a re-score and not a re-synthesize
+
+A re-synthesize would have cost an LLM call per brief and likely
+produced *different* themes due to v7.1's prompt-level changes
+(harder to compare against the original output). The re-score
+applies *only* the math change, holding theme content constant. If
+the new ceiling is wrong on a specific theme we can see it cleanly.
+
+### Tests
+
+`backend/tests/test_sanitize_response.py` adds 6 new cases covering
+the source-count ceiling (8 same-source → max 2, cross-type imbalanced
+→ 5 still valid, 2/3 same-type ladder, single-source 2 unchanged,
+plus a table over `max_conviction_for_counts`). The existing 5→4
+test was renamed and updated to assert the new `kind` value
+(`conviction_downgraded_by_source_count`).
+
+`frontend/tests/unit/source-popover.test.tsx` covers `groupCorroborators`,
+`uniqueIndependentSourceCount`, and the user-reported scenario
+(7 Defillama + 1 F&G with Defillama primary → "+1 source").
+`frontend/tests/e2e/source-popover.spec.ts` asserts on the live
+production data that no source name appears twice in the popover and
+that the chip count matches the unique non-primary names.
