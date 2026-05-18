@@ -4,12 +4,15 @@ node_modules/
 dist/
 build/
 coverage/
+*.tsbuildinfo
+next-env.d.ts
 
 # Python
 __pycache__/
 *.pyc
 .venv/
 venv/
+.pytest_cache/
 
 # Env
 .env
@@ -18,5 +21,15 @@ venv/
 # Logs
 *.log
 
-# macOS
+# Playwright / test artifacts
+test-results/
+playwright-report/
+frontend/tests/screenshots/
+
+# Editors / OS
 .DS_Store
+.vscode/
+.idea/
+
+# Deploy
+.vercel/
