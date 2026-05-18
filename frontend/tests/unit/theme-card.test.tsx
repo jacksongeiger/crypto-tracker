@@ -45,8 +45,11 @@ describe("ThemeCard", () => {
     render(<ThemeCard theme={sampleTheme} total={5} />);
     const trigger = screen.getByRole("button", { name: /conviction 4 of 5/i });
     fireEvent.click(trigger);
-    expect(screen.getByRole("dialog", { name: /conviction scale/i })).toBeInTheDocument();
-    expect(screen.getByText(/broad consensus/i)).toBeInTheDocument();
+    const dialog = screen.getByRole("dialog", { name: /conviction scale/i });
+    expect(dialog).toBeInTheDocument();
+    // Score 5 row describes cross-type corroboration (post-v7.1), not "broad consensus"
+    expect(dialog).toHaveTextContent(/cross-source-type corroboration/i);
+    expect(dialog).not.toHaveTextContent(/broad consensus/i);
   });
 
   it("opens the corroborating-sources popover and lists names", () => {

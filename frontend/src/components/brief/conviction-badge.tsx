@@ -12,9 +12,9 @@ function pipsClass(score: number) {
 const SCALE = [
   { score: 1, label: "Single source, speculative or opinion" },
   { score: 2, label: "Single source, concrete factual claim" },
-  { score: 3, label: "Two independent sources" },
-  { score: 4, label: "Three+ independent sources, or primary + secondary" },
-  { score: 5, label: "Broad consensus or established hard fact" },
+  { score: 3, label: "Two same-type sources" },
+  { score: 4, label: "Three+ same-type sources" },
+  { score: 5, label: "Cross-source-type corroboration (≥2 source types)" },
 ];
 
 export function ConvictionBadge({ score }: { score: number | null }) {
