@@ -53,6 +53,8 @@ describe("ThemeCard", () => {
     render(<ThemeCard theme={sampleTheme} total={5} />);
     const chip = screen.getByText(/The Block/i).closest("button");
     expect(chip).toBeTruthy();
+    // Badge shows "+2 sources" since both corroborators are distinct from primary
+    expect(chip).toHaveTextContent(/\+2 sources/);
     fireEvent.click(chip!);
     const dialog = screen.getByRole("dialog", { name: /corroborating sources/i });
     expect(dialog).toBeInTheDocument();
