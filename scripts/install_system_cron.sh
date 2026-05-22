@@ -32,6 +32,9 @@ JOBS=(
   "macro|40 6 * * *|skills/macro/scripts/run.sh"
   "predictions|40 6 * * *|skills/predictions/scripts/run.sh"
   "synthesis|50 6 * * *|skills/synthesize-brief/scripts/run.sh"
+  # Digest sends AFTER synthesis (06:50) completes. 07:00 PT gives a 10-minute
+  # buffer for Gemini to return + sanitize + persist briefs/brief_themes.
+  "digest|0 7 * * *|scripts/daily_digest_wrapper.sh"
 )
 
 # Build the marker block
@@ -53,9 +56,10 @@ crontab -l 2>/dev/null | awk '
 crontab "$TMP"
 rm "$TMP"
 
-echo "→ installed 6 jobs at:"
+echo "→ installed 7 jobs at:"
 printf "  %s\n" "30 6 * * * (news)" "35 6 * * * (onchain, sentiment)" \
-                "40 6 * * * (macro, predictions)" "50 6 * * * (synthesis)"
+                "40 6 * * * (macro, predictions)" "50 6 * * * (synthesis)" \
+                "00 7 * * * (digest)"
 echo "→ timezone: $TZ_NAME"
 echo "→ logs: $LOG_DIR/<job>.log"
 echo
