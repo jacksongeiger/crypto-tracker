@@ -342,12 +342,12 @@ def _render_events_bucket(label: str, events: list[KeyEvent]) -> str:
 
 def render_crypto_section(loaded: LoadedBrief) -> str:
     items = [ev for ev in loaded.events if ev.bucket == "crypto"]
-    return _render_events_bucket("Today's headlines &mdash; Crypto", items)
+    return _render_events_bucket("Today's headlines — Crypto", items)
 
 
 def render_ai_section(loaded: LoadedBrief) -> str:
     items = [ev for ev in loaded.events if ev.bucket == "ai"]
-    return _render_events_bucket("Today's headlines &mdash; AI", items)
+    return _render_events_bucket("Today's headlines — AI", items)
 
 
 def render_other_section(loaded: LoadedBrief) -> str:
@@ -495,9 +495,17 @@ def render_dashboard_cta() -> str:
     )
 
 
+def _bare_addr(addr: str) -> str:
+    """Extract the bare email from a 'Display Name <email@x>' header value."""
+    if "<" in addr and ">" in addr:
+        return addr.split("<", 1)[1].rsplit(">", 1)[0].strip()
+    return addr.strip()
+
+
 def render_footer(from_addr: str) -> str:
+    bare = _bare_addr(from_addr)
     unsubscribe = (
-        f'<a href="mailto:{escape(from_addr, quote=True)}'
+        f'<a href="mailto:{escape(bare, quote=True)}'
         f'?subject=unsubscribe" '
         f'style="color:{MUTED};text-decoration:underline;">Unsubscribe</a>'
     )

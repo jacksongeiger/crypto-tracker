@@ -45,7 +45,7 @@ export default function AdminSubscribersPage() {
       setCounts({ active: d.count_active || 0, total: d.count_total || 0 });
       setAuthed(true);
       sessionStorage.setItem("admin_token", t);
-    } catch (err) {
+    } catch {
       setError("Network error");
     } finally {
       setLoading(false);
