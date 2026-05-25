@@ -179,3 +179,39 @@ class BriefTheme(Base):
     __table_args__ = (
         Index("ix_brief_themes_brief_order", "brief_id", "display_order"),
     )
+
+
+class Subscriber(Base):
+    """Daily-digest mailing list. Email is unique (case-insensitive via
+    citext-style lower() index below). unsubscribed_at NULL = active.
+    The daily_digest sender filters WHERE unsubscribed_at IS NULL.
+    """
+
+    __tablename__ = "subscribers"
+
+    id = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    email = Column(String, nullable=False)
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    unsubscribed_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        # Case-insensitive uniqueness — Gmail treats Jack@x and jack@x the
+        # same and so do we. Functional unique index requires immutable
+        # function call, which lower() is.
+        Index(
+            "uq_subscribers_email_lower",
+            text("lower(email)"),
+            unique=True,
+        ),
+        Index(
+            "ix_subscribers_active",
+            "unsubscribed_at",
+            postgresql_where=text("unsubscribed_at IS NULL"),
+        ),
+    )

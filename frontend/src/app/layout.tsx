@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { TopNav } from "@/components/nav/top-nav";
+import { SignupFooter } from "@/components/signup/signup-footer";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -32,6 +33,7 @@ export default function RootLayout({
       >
         <TopNav />
         {children}
+        <SignupFooter />
       </body>
     </html>
   );
